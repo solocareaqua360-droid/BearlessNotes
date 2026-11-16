@@ -1,4 +1,3 @@
-import { useRenderCount } from '../utils/perfWatch';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import SoftIcon from './SoftIcon';
@@ -53,7 +52,6 @@ export default function InlineDock({
   // one quiet capsule of actions.
   soft?: SoftTokens | null;
 }) {
-  useRenderCount('InlineDock');
   const published = useNavDockActions();
   const actions = actionsFromDock ? published : givenActions ?? null;
   const theme = useTheme();

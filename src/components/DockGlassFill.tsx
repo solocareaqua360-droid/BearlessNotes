@@ -1,4 +1,3 @@
-import { useRenderCount } from '../utils/perfWatch';
 import { memo, useId, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Defs, Ellipse, LinearGradient, RadialGradient, Rect, Stop } from 'react-native-svg';
@@ -49,7 +48,6 @@ const FILM_ALPHA: Record<string, number> = { dark: 0.69, light: 0.78, default: 0
 // times three passes of the dock, none of them with anything new).
 export default memo(DockGlassFill);
 function DockGlassFill({ soft, paused: still, radius, dense, coat, intensity, airy }: { soft: SoftTokens; paused?: boolean; radius?: number; dense?: boolean; coat?: number; intensity?: number; airy?: boolean }) {
-  useRenderCount('DockGlassFill');
   const theme = useTheme();
   const g = theme.glass;
   const target = useBlurTarget();

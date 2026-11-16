@@ -1,5 +1,4 @@
-import { useRenderCount } from '../utils/perfWatch';
-import { usePerfPoints, useRenderTimer } from '../utils/perfWatch';
+import { useRenderTimer } from '../utils/perfWatch';
 import { hasTextSelection } from '../utils/textSelection';
 import { type ComponentProps, type ReactElement, type ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { applyFolderMerge, planFolderMerge } from '../utils/folderMerge';
@@ -358,10 +357,8 @@ async function readPhotoText(uri: string, driveFileId: string | undefined, start
 }
 
 export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; desk?: boolean } = {}) {
-  const __pt = usePerfPoints('Explorer');
   useRenderTimer('Explorer');
   const S = useSoft();
-  __pt('L361');
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const isFocused = useIsFocused();
@@ -381,7 +378,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // BACK / FORWARD through the folders visited (the Finder's pair), kept apart from «up one level»:
   // they sit in the «⋯» menu, and only while there is somewhere to go.
   const history = useRef({ stack: [''] as string[], at: 0, going: false });
-  __pt('L380');
   const [, bumpHistory] = useState(0);
   useEffect(() => {
     const h = history.current;
@@ -433,7 +429,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const folderTagsAt = (p: string) => tags.filter((t) => t.path === p);
   const folderViewOf = (p: string): 'list' | 'grid' | 'rows' | 'shelves' | undefined => folderTagsAt(p).find((t) => t.view)?.view;
   const pinsOf = (p: string): string[] => folderTagsAt(p).find((t) => t.pins?.length)?.pins ?? [];
-  __pt('L431');
   const viewMode: FolderCardMode | 'canvas' | 'shelves' = globalView === 'canvas' || !path ? globalView : folderViewOf(path) ?? globalView;
   // «СТИЛЬ ПРОВІДНИКА» (2026-10-12, the user's): «Чистий» - the folders as this screen draws them; «Модерний» - the
   // same folders drawn as the «Проєкти» page drew them (see modernLook below: a look only). Remembered on this device.
@@ -486,7 +481,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const startLevel = startList ? startLevels[startLevels.length - 1] ?? null : null;
   const popStartLevel = () => setStartLevels((l) => l.slice(0, -1));
   const focusProj = startList && startLevel !== START_PROJECTS ? NO_PROJECT : focusProjStored;
-  __pt('L483');
   useEffect(() => {
     AsyncStorage.getItem('explorerProject')
       .then((v) => typeof v === 'string' && setFocusProj(v))
@@ -524,7 +518,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // The phone keeps its tap-opens. `chosen` is an item id, or `folder:<path>` for a folder card.
   const explorerSelect = FEATURES.macFrameB && Platform.OS === 'web' && !inPane;
   const [chosen, setChosen] = useState<string | null>(null);
-  __pt('L520');
   const lastPick = useRef<{ id: string; at: number }>({ id: '', at: 0 });
   const chosenOpen = useRef<(() => void) | null>(null);
   // The sidebar's right click on a folder row asks for this folder's menu (utils/folderMenuRequest).
@@ -582,7 +575,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   useEffect(() => {
     AsyncStorage.getItem('explorerChips').then((v) => setChipsOn(v === '1')).catch(() => {});
   }, []);
-  __pt('L577');
   const toggleChips = () =>
     setChipsOn((on) => {
       AsyncStorage.setItem('explorerChips', on ? '0' : '1').catch(() => {});
@@ -672,7 +664,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
 
   // THE BIN (Кошик): what was deleted, newest first - restored or removed for good here.
   const [inBin, setInBin] = useState(false);
-  __pt('L666');
   // «Обране» (navigation/favorites): the ids, and how many of them are still here (a deleted thing drops out by itself).
   const favoriteIds = useFavorites();
   const favoriteSet = useMemo(() => new Set(favoriteIds), [favoriteIds]);
@@ -724,7 +715,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // «НЕРОЗКЛАДЕНЕ» = in no folder AND in no collection of its base: a photo put in a base's collection is put somewhere (2026-10-22: the 22 photos
   // of «Слеш панель» landed in «Нерозкладене» the moment their old folder went).
   const collectionIds = useMemo(() => new Set(allTags.filter((t) => t.baseOnly).map((t) => t.id)), [allTags]);
-  __pt('L717');
   const isUnfiled = (item: FolderItem) => (pathsOf.get(item.id) ?? []).length === 0 && !item.tagIds.some((id) => collectionIds.has(id));
 
   // THE FILTER CHIPS (the one plan, step 4): a kind and a project narrow what the level shows;
@@ -827,7 +817,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // The start list has no projects style of its own: only its «Проєкти» level is one.
   const projectsOn = FEATURES.explorerProjects && (startList ? startLevel === START_PROJECTS : explorerMode === 'projects');
   const projectsHere = projectsOn && !path && !inBin && !inCleanup && !searching && !filtering;
-  __pt('L819');
   const projectIdsOf = useMemo(() => {
     const m = new Map<string, Set<string>>();
     tags.forEach((t) => {
@@ -1060,7 +1049,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const [ocrRequest, setOcrRequest] = useState<RecognizeRequest | null>(null);
   const photosHere = useMemo(() => here.filter((i) => i.kind === 'photo' && typeof (i.raw as Record<string, unknown> | undefined)?.imageUri === 'string'), [here]);
   const viewerIndex = viewerId ? photosHere.findIndex((i) => i.id === viewerId) : -1;
-  __pt('L1051');
   const viewerItem = viewerIndex >= 0 ? photosHere[viewerIndex] : null;
   const viewerRaw = (viewerItem?.raw ?? {}) as Record<string, unknown>;
   // A video plays right here too, full screen over the explorer.
@@ -1157,7 +1145,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       }
     } else await openFileExternally(file);
   }
-  __pt('L1147');
   const cardsHere = useMemo(
     () =>
       here
@@ -1213,7 +1200,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // (CollectionCard's gust), then the card turns over into the window (flipOpen). `blowing` is the card in the wind.
   const [blowing, setBlowing] = useState<string | null>(null);
   const [collectionFlip, setCollectionFlip] = useState<FlipFrom | null>(null);
-  __pt('L1202');
   const blowTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
     if (blowTimer.current) clearTimeout(blowTimer.current);
@@ -1265,7 +1251,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const { flatten: flattenPhoto, node: flattenPhotoNode } = useFlattenPhoto();
   const { downloadToast, showDownloadToast, dismissDownloadToast } = useDownloadToast();
   const [groups, setGroups] = useState<Group[]>([]);
-  __pt('L1253');
   // THE BAND SHOWS ONLY PROJECTS THAT HAVE A FOLDER (the user, 2026-10-22): a project is its folders here; one made of tasks alone lives in
   // «Справи» and appears in the band the moment a folder is given to it. One with nothing at all should not exist.
   const bandGroups = useMemo(() => {
@@ -1330,7 +1315,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [justMade, items]);
-  __pt('L1317');
   const folderPaths = useMemo(() => Array.from(new Set(tags.map((t) => t.path))).sort((a, b) => a.localeCompare(b)), [tags]);
   // A folder's own view and pins live on the tag that already carries them, else on its look's tag (cardTagOf; an
   // implied folder gets a tag of its own through setTagFields).
@@ -1629,7 +1613,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       notify('Не вдалося створити папку', (e as Error).message);
     }
   }
-  __pt('L1615');
   // «НОВА ПАПКА» IN ONE CLICK, WHERE YOU STAND (the user, 2026-10-30: «створити нову папку там де я знаходжусь в один клік, а по
   // факту треба прописати купу тексту»): the folder is made at once under the one that is open - «Нова папка», «Нова папка 2»... -
   // and its name asked for straight away, kept as it is by Enter or Esc.
@@ -1927,7 +1910,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       setTimeout(() => deleteSelectedRef.current(), 80);
     }
   };
-  __pt('L1912');
   useEffect(() => {
     if (!explorerSelect || !isFocused || typeof window === 'undefined') return;
     const onKey = (e: KeyboardEvent) => keysRef.current(e);
@@ -2383,7 +2365,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // - or over a crumb with the second finger). FOLDERS are carried too, into another folder.
   // A folder is a pseudo-item here: id `folder:<path>`, its path in `folderPath`.
   type Carried = FolderItem & { folderPath?: string };
-  __pt('L2367');
   const folderItem = (f: FolderEntry): Carried =>
     ({ id: `folder:${f.path}`, docId: f.path, kind: 'shortcut' as FolderItemKind, tagKind: 'folder', collection: 'tags', tagIds: [], title: f.name, folderPath: f.path }) as Carried;
   const lastDest = useRef(new Map<string, string | null>());
@@ -2776,7 +2757,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   focusRootsRef.current = focusRoots;
   const focusTopsRef = useRef<string[]>([]);
   focusTopsRef.current = focusTops;
-  __pt('L2759');
   const upPlain = useCallback(
     () =>
       setPath((p) => {
@@ -2900,7 +2880,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const openedFrom = useRef(new Map<string, Rect4>());
   const openedAtOffset = useRef<{ path: string; y: number } | null>(null);
   const lastPath = useRef(path);
-  __pt('L2882');
   // The offset the list is being brought back to (0: none to wait for) - the closing measures its card after it.
   const wantOffset = useRef(0);
   useLayoutEffect(() => {
@@ -2989,7 +2968,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   }
   const ownBar = !paneBar && !desk && topNavOn;
   const underBar = paneBar || ownBar || (!!desk && topNavOn);
-  __pt('L2970');
   // The chip row stands still under the bar; the same gap above it as below it.
   const CHIPS_H = 36;
   const CHIPS_GAP = 14;
@@ -3080,7 +3058,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // the way back from the left - a short slide with a fade from a third, the direction the notes take (components/
   // SlideFrame). The modern look keeps its card growing into the folder (FolderGrow / FolderShrink).
   const levelX = useSharedValue(0);
-  __pt('L3060');
   const levelFade = useSharedValue(1);
   const levelBefore = useRef({ path, startLevel });
   useLayoutEffect(() => {
@@ -3133,7 +3110,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       pin: colourable ? { on: pinsApi.isPinned({ kind: 'folder', path: fp }), onToggle: () => pinsApi.toggle({ kind: 'folder', path: fp }) } : undefined,
     };
   };
-  __pt('L3112');
   useEffect(() => setChosen(null), [path]);
   const chosenFolderPath = chosen?.startsWith('folder:') ? chosen.slice('folder:'.length) : null;
   const chosenItem = chosen && !chosenFolderPath ? items.find((i) => i.id === chosen) ?? null : null;
@@ -3300,7 +3276,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // The clean look's first level shows «Думки» as a square (ThoughtsSquare) - where the wide card stood.
   const thoughtsHere = FEATURES.thoughts && !startList && !path && !inBin && !inCleanup && !searching && !filtering && (!projectsHere || focusProj === NO_PROJECT);
   const thoughtsSquare = thoughtsHere && !modernLook;
-  __pt('L3278');
   const squareSide = Math.floor((contentW - FOLDER_GAP) / 2);
   // A modern column's width (two on the phone; capped at 260 where there are more).
   const modernCols = touchDensity ? 2 : Math.max(2, Math.floor((contentW + 10) / 210));
@@ -3709,7 +3684,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     openItem(item, e);
   };
   const pressFns = useRef(new Map<string, (e?: GestureResponderEvent) => void>());
-  __pt('L3686');
   const pressItems = useRef(new Map<string, FolderItem>());
   const pressFor = (item: FolderItem) => {
     pressItems.current.set(item.id, item);
@@ -3840,7 +3814,6 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   };
   const bodyKept = useRef<ReactElement | null>(null);
   const keepWhileAway = (el: ReactElement) => {
-  __pt('end');
     if (!isFocused && bodyKept.current) return bodyKept.current;
     bodyKept.current = el;
     return el;
@@ -4503,7 +4476,6 @@ function StartRowView({
   // A folder's row: tinted while a carried card is over it.
   dropPath?: string;
 }) {
-  useRenderCount('StartRow');
   const S = useSoft();
   // A hold lifts the row over the blur, the way every hold menu does (utils/heldNode).
   const held = useHeld();
@@ -4538,7 +4510,6 @@ function StartRowView({
 // Drawn again only when what it shows changes (utils/memoLatest).
 const ThoughtsRow = memoLatest(ThoughtsRowView);
 function ThoughtsRowView({ last }: { last: boolean }) {
-  useRenderCount('ThoughtsRow');
   const S = useSoft();
   const { countOf } = useThoughts(true);
   const loose = countOf(null);
@@ -4550,7 +4521,6 @@ function ThoughtsRowView({ last }: { last: boolean }) {
 // Drawn again only when what it shows changes (utils/memoLatest).
 const StartHead = memoLatest(StartHeadView);
 function StartHeadView({ title, folded, count, onOpen, onToggle }: { title: string; folded: boolean; count: number; onOpen: () => void; onToggle: () => void }) {
-  useRenderCount('StartHead');
   const S = useSoft();
   return (
     <Pressable onPress={onToggle} style={startStyles.head} accessibilityLabel={folded ? `Розгорнути: ${title}` : `Згорнути: ${title}`}>
@@ -4593,7 +4563,6 @@ async function holdStartBase(key: string, label: string, fav: { isOn: (key: stri
 // Drawn again only when what it shows changes (utils/memoLatest).
 const StartFavorites = memoLatest(StartFavoritesView);
 function StartFavoritesView({ favorites, onFavorites }: { favorites: number; onFavorites: () => void }) {
-  useRenderCount('StartFavorites');
   const { customDatabases, iconFor } = useDatabaseTiles();
   const desksControl = useContext(DesksControlContext);
   const fav = useFavoriteBases();
@@ -4638,7 +4607,6 @@ const startStyles = StyleSheet.create({
 // Drawn again only when what it shows changes (utils/memoLatest).
 const StartBases = memoLatest(StartBasesView);
 function StartBasesView({ folded, onToggle }: { folded: boolean; onToggle: () => void }) {
-  useRenderCount('StartBases');
   const { customDatabases, iconFor } = useDatabaseTiles();
   const desksControl = useContext(DesksControlContext);
   const fav = useFavoriteBases();

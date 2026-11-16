@@ -1,4 +1,3 @@
-import { useRenderCount } from '../utils/perfWatch';
 import { forwardRef, memo, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Keyboard, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -63,7 +62,6 @@ type RiverTask = {
 export type CalendarRiverHandle = { plus: () => void };
 
 const CalendarRiver = forwardRef<CalendarRiverHandle, { navigation: unknown }>(function CalendarRiver({ navigation }, ref) {
-  useRenderCount('CalendarRiver');
   const S = useSoft();
   const insets = useSafeAreaInsets();
   const topNavOn = useTopNavOn();

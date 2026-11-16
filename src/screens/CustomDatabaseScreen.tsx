@@ -1,5 +1,4 @@
 import { useSlideSettled } from '../hooks/useSlideSettled';
-import { usePerfPoints } from '../utils/perfWatch';
 import { useRenderTimer } from '../utils/perfWatch';
 import { favoriteMenuRow } from '../navigation/favorites';
 import { appendToLessonNote, captureVideoFrame, formatStamp, frameBlocks, timecodeBlocks } from '../utils/videoFrames';
@@ -399,9 +398,7 @@ export default function CustomDatabaseScreen({
   databaseId: databaseIdProp,
   inPane,
 }: Partial<Props> & { databaseId?: string; inPane?: boolean }) {
-  const __pt = usePerfPoints('CustomDb');
   useRenderTimer('CustomDb');
-  __pt('L401');
   // Up here with the other hooks - below the early returns it is a hook
   // called conditionally (the white-screen crash).
   const rowMenuPointer = useDensity() === 'pointer';
@@ -421,7 +418,6 @@ export default function CustomDatabaseScreen({
   // Inline glass colours, taken to the soft inks when the soft style is on
   // (see softCustomDatabaseWindows for the same rule on the styles).
   const sInk = (glass: string) => (softDb ? softDb.ink : glass);
-  __pt('L420');
   const sInk2 = (glass: string) => (softDb ? softDb.ink2 : glass);
   const sInk3 = (glass: string) => (softDb ? softDb.ink3 : glass);
   const sBg = (glass: string) => (softDb ? softDb.bg : glass);
@@ -430,7 +426,6 @@ export default function CustomDatabaseScreen({
   const recordColour = useRecordColour();
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
-  __pt('L428');
   const dockClear = useDockClearance();
   const showContext = useDockShowContext();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -448,7 +443,6 @@ export default function CustomDatabaseScreen({
   };
   const databaseId = databaseIdProp ?? params.databaseId ?? '';
   const { openRowId, openViewId } = params;
-  __pt('L445');
   const [onlyRows, setOnlyRows] = useState<string[] | null>(params.onlyRowIds ?? null);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
@@ -467,7 +461,6 @@ export default function CustomDatabaseScreen({
   // One press / menu / tick function per record, kept between renders (see CustomRowCardKept): what they do is read from
   // `rowActs` at the tap, which the screen refreshes on every render.
   const rowActs = useRef({ press: (_id: string, _e?: GestureResponderEvent) => {}, menu: (_id: string) => {}, tick: (_id: string) => {} });
-  __pt('L463');
   const rowFns = useRef(new Map<string, { press: (e?: GestureResponderEvent) => void; menu: () => void; tick: () => void }>());
   // The rows of the bases this one's relations point at (or that point at it), by their own query.
   const [linkedRows, setLinkedRows] = useState<CustomDatabaseRow[]>([]);
@@ -482,7 +475,6 @@ export default function CustomDatabaseScreen({
   // to the databases layer then begins from the edge of the screen (see
   // Tabs) - "не можу перейти ... свайпом до вікна з базами даних".
   useEdgeOnlyDrawerSwipe(isFocused && (viewMode === 'table' || viewMode === 'kanban' || viewMode === 'schedule' || viewMode === 'endings'));
-  __pt('L477');
   // Which capsule is selected at the top of the screen - null means
   // "Поточні зміни" (the working area: sort/filter/group/representation/
   // hidden fields persist for it same as before, just now explicitly
@@ -517,7 +509,6 @@ export default function CustomDatabaseScreen({
   const [paramsFolded, setParamsFolded] = useState(false);
   // The project as a filter condition (the capsule row above the list went, 2026-10-16) - its own sub-list.
   const [projectFilterOpen, setProjectFilterOpen] = useState(false);
-  __pt('L511');
   // The saved views, as a small list under their own button at the bar's edge.
   const [viewsMenuOpen, setViewsMenuOpen] = useState(false);
   const [sortPref, setSortPref] = useState<RowSort>(() => shownAs.get(databaseId)?.sortPref ?? DEFAULT_ROW_SORT);
@@ -539,7 +530,6 @@ export default function CustomDatabaseScreen({
   // its top level, the list of fields.
   const [filterFieldId, setFilterFieldId] = useState<string | null>(null);
   const [savedViews, setSavedViews] = useState<CustomDatabaseView[]>(() => shownAs.get(databaseId)?.savedViews ?? []);
-  __pt('L532');
   // Every manual schedule status this account owns, across every schedule
   // view - see ScheduleCellStatus's own comment. Small enough (one row per
   // filled cell of one view) that filtering client-side by the active
@@ -579,7 +569,6 @@ export default function CustomDatabaseScreen({
   // editingViewId) - icon choice is part of "редагування", not its own
   // row button.
   const [iconPickerVisible, setIconPickerVisible] = useState(false);
-  __pt('L571');
   // Which view the project picker (GroupPickerSheet) is currently open
   // for, from its own row in Налаштування виглядів.
   const [viewGroupPickerFor, setViewGroupPickerFor] = useState<CustomDatabaseView | null>(null);
@@ -590,7 +579,6 @@ export default function CustomDatabaseScreen({
   const [editingFields, setEditingFields] = useState(false);
   const [importing, setImporting] = useState(false);
   const [rowEditor, setRowEditor] = useState<RowEditorState | null>(null);
-  __pt('L581');
   // The type chosen for a field being added from inside the record form -
   // the name is asked next, and the two together make the field. Null
   // while nothing is being added. See addFieldFromForm.
@@ -642,7 +630,6 @@ export default function CustomDatabaseScreen({
       }),
     [navigation]
   );
-  __pt('L632');
   // Which lesson plays in its own card (one at a time - see
   // InlineVideoPlayer), and which one is open on the whole screen.
   const [playingLessonId, setPlayingLessonId] = useState<string | null>(null);
@@ -662,7 +649,6 @@ export default function CustomDatabaseScreen({
     }
   }, [playingLessonId]);
   useEffect(() => () => stopScreenCapture(), []);
-  __pt('L651');
   const flash = (text: string) => {
     setLessonFlash(text);
     setTimeout(() => setLessonFlash((now) => (now === text ? null : now)), 2500);
@@ -695,7 +681,6 @@ export default function CustomDatabaseScreen({
   const [tagPickerVisible, setTagPickerVisible] = useState(false);
   const [datePickerFieldId, setDatePickerFieldId] = useState<string | null>(null);
   const [selectPickerFieldId, setSelectPickerFieldId] = useState<string | null>(null);
-  __pt('L683');
   const [relationPickerFieldId, setRelationPickerFieldId] = useState<string | null>(null);
   // Which 'backlink' field's "додати" picker is open. Picking there writes
   // the OTHER row's relation field, never anything on this row - that one
@@ -713,7 +698,6 @@ export default function CustomDatabaseScreen({
   // their own picker against that row+field rather than against the row
   // form's draft.
   const [cellPicker, setCellPicker] = useState<{ rowId: string; field: FieldDef } | null>(null);
-  __pt('L700');
   // 'relation' fields (see FieldsEditorSheet) resolve against these three
   // caches. photosList is every "Фото" item (id/uri/title only, no full
   // PhotoItem shape) - a relation targeting Photos is the common case, so
@@ -749,7 +733,6 @@ export default function CustomDatabaseScreen({
   const tableScrollHandler = useAnimatedScrollHandler((e) => {
     tableScrollX.value = e.contentOffset.x;
   });
-  __pt('L735');
   // The schedule grid is one sideways scroller too (header and rows together), with its own offset for the frozen
   // row titles - see renderSchedule.
   const scheduleScrollX = useSharedValue(0);
@@ -782,7 +765,6 @@ export default function CustomDatabaseScreen({
   // day the rows are grouped by - who is on a trip, under which manual
   // status, or free on it. Today until a date in the header is tapped.
   const [scheduleCursor, setScheduleCursor] = useState(() => dateKey(new Date()));
-  __pt('L767');
   // The currencies and their rates (a database with a price role).
   const [ratesOpen, setRatesOpen] = useState(false);
   // A «Додатки та сервіси» database made before its template grew the
@@ -838,7 +820,6 @@ export default function CustomDatabaseScreen({
   // Technical notes (recordNotes): an app's «Розбір» and its other notes.
   const technicalDocs = useTechnicalDocs();
   const { tags, attachTag, detachTag, createAndAttachTag, createAndAttachTagToMany, renameTag } = useTags();
-  __pt('L822');
   const { isSelectMode, selectedIds, toggleSelectMode, toggle: toggleSelected, sweepTo, clear: clearSelection } =
     useMultiSelect();
   // A row in the list wrapped for swipe to select (components/SwipeSelect).
@@ -1044,7 +1025,6 @@ export default function CustomDatabaseScreen({
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allDatabases, referencedDbIdsKey]);
-  __pt('L1027');
   const relatedRows = useMemo(() => {
     const grouped: Record<string, CustomDatabaseRow[]> = {};
     if (referencedDbIds.length === 0) return grouped;
@@ -1213,7 +1193,6 @@ export default function CustomDatabaseScreen({
     (f) => f.type === 'relation' && f.relationTarget?.kind === 'customDb' && !f.multiple
   ) ?? [];
   const scheduleDateFields = database?.fields.filter((f) => f.type === 'date') ?? [];
-  __pt('L1195');
   // Every field an event card COULD also show (a driver, a route) - the
   // sheet itself excludes whichever relation/date field is picked as the
   // row grouping and the card's own span, since those are redundant here.
@@ -1300,7 +1279,6 @@ export default function CustomDatabaseScreen({
           { label: 'Імпортувати таблицю', icon: 'download-outline', onPress: () => setImporting(true) },
           { label: 'Видалити базу', icon: 'trash-outline', tone: 'danger', onPress: askToDeleteDatabase },
   ];
-  __pt('L1279');
   useDockBeads(
     isFocused
       ? bar
@@ -1433,7 +1411,6 @@ export default function CustomDatabaseScreen({
   const paramsPanelOn = recordPanelOn;
   const panelSlotRef = useRef<ReactNode>(null);
   const [pageForced, setPageForced] = useState(false);
-  __pt('L1411');
   useEffect(() => {
     if (rowPageId === null) setPageForced(false);
   }, [rowPageId]);
@@ -1511,7 +1488,6 @@ export default function CustomDatabaseScreen({
 
   // Not a hook: this stands below the «!database» early return.
   const onlySet = onlyRows ? new Set(onlyRows) : null;
-  __pt('L1488');
   const pendingFilteredRows = onlySet ? filterPending(rows).filter((r) => onlySet.has(r.id)) : filterPending(rows);
   const groupFilteredRows =
     groupFilter === null
@@ -1553,7 +1529,6 @@ export default function CustomDatabaseScreen({
   const sortFields = sortableFieldsOf(database);
   const groupFields = groupableFieldsOf(database);
   const groupField = groupFieldId ? (groupFields.find((f) => f.id === groupFieldId) ?? null) : null;
-  __pt('L1529');
   const rowGroups = groupField ? groupRows(displayedRows, groupField, displayContext) : [];
 
   function toggleGroupCollapsed(key: string) {
@@ -2630,7 +2605,6 @@ export default function CustomDatabaseScreen({
   const datePickerField = database.fields.find((f) => f.id === datePickerFieldId) ?? null;
   const selectPickerField = database.fields.find((f) => f.id === selectPickerFieldId) ?? null;
   const relationPickerField = database.fields.find((f) => f.id === relationPickerFieldId) ?? null;
-  __pt('L2605');
   const backlinkPickerField = database.fields.find((f) => f.id === backlinkPickerFieldId) ?? null;
 
   rowActs.current = {
@@ -4576,7 +4550,6 @@ export default function CustomDatabaseScreen({
     </CustomBasePanel>
   ) : null;
 
-  __pt('end');
   return (
     <SoftSurfaceContext.Provider value={softDb}>
     <View style={styles.container}>

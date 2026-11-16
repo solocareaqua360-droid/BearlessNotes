@@ -1,4 +1,3 @@
-import { useRenderCount } from '../utils/perfWatch';
 import { memo } from 'react';
 import { listNumbers } from '../utils/documentBlocks';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -54,7 +53,6 @@ function DayPageMiniature({
   scale: number;
   radius: number;
 }) {
-  useRenderCount('DayPageMiniature');
   const theme = useTheme();
   const editorStyles = useStyles(makeEditorStyles);
   const width = pageWidth * scale;

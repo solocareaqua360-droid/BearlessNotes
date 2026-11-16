@@ -1,4 +1,3 @@
-import { useRenderCount } from '../utils/perfWatch';
 import { memo, useRef } from 'react';
 import CornerGlow, { glowColorFor, TypeBadge } from './CornerGlow';
 import { FEATURES } from '../features';
@@ -161,7 +160,6 @@ function FolderTile({
 // when in its own section titles.
 // Also the links bases' «Рядки» (2026-11-16, «спершись на референс нашого провідника»): the same row, word for word.
 export function FolderRowItem({ item, onPress, onLongPress }: { item: FolderItem; onPress: (e?: GestureResponderEvent) => void; onLongPress?: () => void }) {
-  useRenderCount('FolderRowItem');
   const S = useSoft();
   const raw = (item.raw ?? {}) as Record<string, unknown>;
   const { picture, sub } = thingFace(item, S, ROW_PIC_W, ROW_PIC_H, 20);
@@ -262,7 +260,6 @@ function FolderItemCardInner({
   isSelected?: boolean;
   onToggleSelect?: () => void;
 }) {
-  useRenderCount('FolderItemCard');
   const S = useSoft();
   const raw = (item.raw ?? {}) as Record<string, unknown>;
   // `tags` is the whole list; a card shows only ITS OWN (it showed every tag

@@ -1,5 +1,4 @@
 import { memoLatest } from '../utils/memoLatest';
-import { useRenderCount } from '../utils/perfWatch';
 import { memo, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
@@ -39,7 +38,6 @@ function go(route: string, params?: Record<string, unknown>) {
 
 // `kinds`: only these kinds of place (the start desk's list keeps notes and boards).
 function RecentPlacesRow({ side, kinds }: { side: number; kinds?: RecentPlace['kind'][] }) {
-  useRenderCount('RecentPlacesRow');
   const S = useSoft();
   const desksControl = useContext(DesksControlContext);
   const recent = useRecentPlaces();

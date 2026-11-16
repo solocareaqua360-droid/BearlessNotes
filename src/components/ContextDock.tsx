@@ -1,4 +1,3 @@
-import { useRenderCount } from '../utils/perfWatch';
 import { ReactNode, useLayoutEffect, useMemo, useEffect, useRef, useState } from 'react';
 import { dockAwayCover, useDockAway } from '../utils/dockAway';
 import { chromeCover, chromeNodeRef } from '../utils/chromeMorph';
@@ -466,7 +465,6 @@ export const SOFT_DOCK_GLYPHS: Record<string, SoftIconName> = {
 // screen. Keeps what is typed itself and hands every change to the screen,
 // the way the bar's plate did.
 export function SoftSearchField({ search, soft, height }: { search: TopSearch; soft: SoftTokens; height: number }) {
-  useRenderCount('SoftSearchField');
   const [text, setText] = useState(search.initialQuery);
   return (
     <View style={[styles.softField, { height, borderRadius: height / 2, backgroundColor: soft.chrome, boxShadow: soft.shadow }]}>
@@ -3141,7 +3139,6 @@ export function ActionButton({
   // style's own icon where it has one, Inter for the word.
   soft?: SoftTokens | null;
 }) {
-  useRenderCount('ActionButton');
   const glassOn = useDockGlass();
   const ink =
     action.tone === 'danger'
@@ -3333,7 +3330,6 @@ export function Bead({
   size: number;
   height: number;
 }) {
-  useRenderCount('Bead');
   return (
     <Pressable
       onPress={bead.onPress}
