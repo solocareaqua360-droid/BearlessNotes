@@ -1,3 +1,4 @@
+import { useRenderCount } from '../utils/perfWatch';
 import { useRenderTimer } from '../utils/perfWatch';
 import { ReactElement, ReactNode, useEffect, useRef, useState } from 'react';
 import DockGlassFill, { dockInk, useDockSurface } from './DockGlassFill';
@@ -178,6 +179,7 @@ function useGrow() {
 }
 // Anything with a press of its own (the "+" the dock is handed): grows with the touch, whoever takes it.
 function GrowOnTouch({ style, children }: { style: object; children: ReactNode }) {
+  useRenderCount('GrowOnTouch');
   const g = useGrow();
   return (
     <Animated.View style={[style, g.style]} onTouchStart={g.on} onTouchEnd={g.off} onTouchCancel={g.off}>
@@ -196,6 +198,7 @@ function GrowOnTouch({ style, children }: { style: object; children: ReactNode }
 const HW = BEAD_W + HERE_GROW * 2;
 const HH = REST_H;
 function HereBubble({ soft }: { soft: SoftTokens }) {
+  useRenderCount('HereBubble');
   // On white the pale film vanishes: the light theme's film is deeper and a fine dark line holds the bubble's edge.
   const light = !soft.dark;
   return (
@@ -230,6 +233,7 @@ function useHereScale(active: boolean) {
 }
 
 function DeskBeadButton({ d, i, bw, pad, soft, onPick, active, onLens }: { d: DeskBead; i: number; bw: number; pad: number; soft: SoftTokens; onPick: (i: number) => void; active?: boolean; onLens: (i: number | null) => void }) {
+  useRenderCount('DeskBeadButton');
   const glassOn = useDockGlass();
   const g = useGrow();
   const here = useHereScale(!!active);
@@ -262,6 +266,7 @@ function DeskBeadButton({ d, i, bw, pad, soft, onPick, active, onLens }: { d: De
 
 // The balloon among the places: drawn like a desk, the window it opens grows out of it (utils/assistMorph).
 function AssistBead({ i, bw, pad, soft, active, onPress, onLens }: { i: number; bw: number; pad: number; soft: SoftTokens; active: boolean; onPress: () => void; onLens: (i: number | null) => void }) {
+  useRenderCount('AssistBead');
   const glassOn = useDockGlass();
   const g = useGrow();
   const here = useHereScale(active);

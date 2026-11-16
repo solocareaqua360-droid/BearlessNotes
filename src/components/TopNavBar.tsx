@@ -1,3 +1,4 @@
+import { useRenderCount } from '../utils/perfWatch';
 import { Ionicons } from './icons/Ionicons';
 import { chromeCover, chromeNodeRef } from '../utils/chromeMorph';
 import { Fragment, ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState, memo } from 'react';
@@ -838,6 +839,7 @@ function Surface({
   onLayout?: (e: LayoutChangeEvent) => void;
   children?: ReactNode;
 }) {
+  useRenderCount('TopSurface');
   if (!soft) {
     return (
       <DockFrost style={style} radius={radius}>
@@ -912,6 +914,7 @@ function SearchRow({
   inkMuted: string;
   soft: SoftTokens | null;
 }) {
+  useRenderCount('SearchRow');
   useRenderTimer('Смужка: пошук');
   const [text, setText] = useState(search.initialQuery);
   return (
@@ -1061,6 +1064,7 @@ function DeskPill({
   // closed ones nothing at all - no glass piece for each.
   soft: SoftTokens | null;
 }) {
+  useRenderCount('DeskPill');
   const target = desk.active ? layout.width : PILL_W;
   const width = useSharedValue(target);
   useEffect(() => {
@@ -1144,6 +1148,7 @@ function DeskTitles({
   // features.openTopBar: the name stands at the plate's left, not in its middle.
   left?: boolean;
 }) {
+  useRenderCount('DeskTitles');
   const activeIndex = Math.max(0, desks.findIndex((d) => d.active));
   const shift = useMemo(
     () =>
@@ -1234,6 +1239,7 @@ function TrailRow({
   inkMuted: string;
   soft?: boolean;
 }) {
+  useRenderCount('TrailRow');
   useRenderTimer('Смужка: слід');
   const hug = useHug();
   const targets = useNavDockTargets();
@@ -1303,6 +1309,7 @@ function PathRow({
   // features.openTopBar: a lone name at the plate's left.
   left?: boolean;
 }) {
+  useRenderCount('PathRow');
   useRenderTimer('Смужка: шлях');
   const hug = useHug();
   const targets = useNavDockTargets();

@@ -1,3 +1,4 @@
+import { useRenderCount } from '../utils/perfWatch';
 import { useId, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Defs, Ellipse, LinearGradient, RadialGradient, Rect, Stop } from 'react-native-svg';
@@ -45,6 +46,7 @@ const FILM_ALPHA: Record<string, number> = { dark: 0.69, light: 0.78, default: 0
 // user, 2026-10-25: «зливається текст блюр повинен бути сильнішим фон просвічує»).
 // `airy`: the desks' dock, lighter than the other capsules so «where you are» on it has the weight (the user, 2026-10-29).
 export default function DockGlassFill({ soft, paused: still, radius, dense, coat, intensity, airy }: { soft: SoftTokens; paused?: boolean; radius?: number; dense?: boolean; coat?: number; intensity?: number; airy?: boolean }) {
+  useRenderCount('DockGlassFill');
   const theme = useTheme();
   const g = theme.glass;
   const target = useBlurTarget();
