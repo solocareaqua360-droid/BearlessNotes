@@ -1279,7 +1279,7 @@ export default function LinksScreen({
 
   // Shared by both the grid and the list body below - the explorer's own
   // head (crumbs/folders/bin entry), or the bin's own head when open.
-  function explorerOrTrashHead() {
+  function explorerOrTrashHead(gridColumns = 2) {
     if (trashOpen) {
       return (
         <View style={styles.trashHead}>
@@ -1320,6 +1320,9 @@ export default function LinksScreen({
         trash={{ count: trashedLinks.length, onOpen: () => setTrashOpen(true) }}
         // A playlist shows its videos, a collection of points its points on a map (CollectionCard).
         faceOf={collectionFace}
+        // The folders wear the cards' shape in every view (the map and the canvas draw no head).
+        look={viewMode === 'grid' ? 'grid' : viewMode === 'rows' ? 'rows' : 'list'}
+        gridColumns={gridColumns}
       />
     );
   }
@@ -1893,7 +1896,7 @@ export default function LinksScreen({
               { paddingTop: listTopPad, paddingBottom: dockClear + insets.bottom },
               ]}
           >
-            {explorerOrTrashHead()}
+            {explorerOrTrashHead(listWidth >= 640 ? 3 : 2)}
             <View style={styles.gridRows}>
               {(trashOpen ? trashedLinks : linksHere).map((item) =>
                 trashOpen

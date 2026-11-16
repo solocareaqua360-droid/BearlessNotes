@@ -7,7 +7,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import { ExplorerFolder } from '../hooks/useExplorer';
 import { FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
-import { softenStyles, useSoftSurface, type SoftTokens } from '../theme/soft';
+import { softCardFrame, softenStyles, useSoft, useSoftSurface, type SoftTokens } from '../theme/soft';
+import { gridBasis, gridFillerCount } from './ItemCards';
 
 // What stands above a database's records while it is in explorer mode:
 // where you are, and the folders at this level.
@@ -32,6 +33,8 @@ export default function ExplorerHead({
   folderRef,
   faceOf,
   builtIn = [],
+  look,
+  gridColumns = 2,
 }: {
   path: string;
   folders: ExplorerFolder[];
@@ -59,8 +62,15 @@ export default function ExplorerHead({
   faceOf?: (folder: ExplorerFolder) => { node: ReactNode; wide: boolean } | null;
   // Built-in faces that stand FIRST among the collections, sized like them (the Photos base's «З камери»): not folders, just a card and a tap.
   builtIn?: { key: string; node: ReactNode; onPress: () => void }[];
+  // THE FOLDER TAKES THE SHAPE OF THE CARDS AROUND IT (the links bases, 2026-11-16, the user: «папка не міняє свій вигляд
+  // на відміну від карток посилань»): in the grid a tile of a card's width with the folder where a card has its picture,
+  // in the list a whole-width card with the picture box on its left, in «Рядки» a row with the hairline under it. Absent:
+  // the folder pills, as everywhere else.
+  look?: 'list' | 'grid' | 'rows';
+  gridColumns?: number;
 }) {
   const theme = useTheme();
+  const S = useSoft();
   // Soft (a database's chrome says so - see SoftSurfaceContext): the same
   // folder tiles the Documents desk has - two across, a quiet card, a
   // small tinted seat for the icon, Inter - instead of the tall glass rows
@@ -120,6 +130,34 @@ export default function ExplorerHead({
           ))}
         </View>
       )}
+      {look ? (
+        <ShapedFolders
+          look={look}
+          gridColumns={gridColumns}
+          S={S}
+          entries={[
+            ...plain.map((folder) => ({
+              key: folder.fullPath,
+              name: folder.name,
+              icon: (folder.tag?.icon as keyof typeof Ionicons.glyphMap) || 'folder-outline',
+              color: folder.tag?.color,
+              docs: folder.docs,
+              subs: folder.subfolders as number | undefined,
+              ref: folderRef?.(folder.fullPath),
+              onPress: () => onGo(folder.fullPath),
+              onLongPress: () => onFolderMenu(folder, rowNodes.current.get(folder.fullPath)),
+              nodeRef: (node: View | null) => {
+                if (node) rowNodes.current.set(folder.fullPath, node);
+                else rowNodes.current.delete(folder.fullPath);
+              },
+            })),
+            ...(!!trash && trash.count > 0 && path === ''
+              ? [{ key: '__bin__', name: 'Кошик', icon: 'trash-outline' as const, color: undefined, docs: trash.count, subs: undefined, ref: undefined, onPress: trash.onOpen, onLongPress: undefined, nodeRef: undefined }]
+              : []),
+          ]}
+          itemIcon={itemIcon}
+        />
+      ) : (
       <View style={cols > 1 ? styles.folderGrid : styles.folderStack}>
       {plain.map((folder) => (
         <View key={folder.fullPath} ref={folderRef?.(folder.fullPath)} collapsable={false}>
@@ -176,9 +214,119 @@ export default function ExplorerHead({
         </Pressable>
       )}
       </View>
+      )}
     </View>
   );
 }
+
+type ShapedEntry = {
+  key: string;
+  name: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  color?: string;
+  docs: number;
+  subs?: number;
+  ref?: (node: View | null) => void;
+  nodeRef?: (node: View | null) => void;
+  onPress: () => void;
+  onLongPress?: () => void;
+};
+
+// The three shapes (see `look`): the sizes are the link cards' own (ItemCards' LinkGridCell / LinkRow and
+// FolderItemCard's FolderRowItem), so a folder stands among them as one of them.
+function ShapedFolders({ look, gridColumns, entries, itemIcon, S }: { look: 'list' | 'grid' | 'rows'; gridColumns: number; entries: ShapedEntry[]; itemIcon: keyof typeof Ionicons.glyphMap; S: SoftTokens }) {
+  if (entries.length === 0) return null;
+  const meta = (e: ShapedEntry, size: number) => (
+    <View style={shaped.meta}>
+      <Ionicons name={itemIcon} size={size} color={S.ink3} />
+      <Text style={[shaped.count, { color: S.ink3, fontSize: size - 1 }]}>{e.docs}</Text>
+      {e.subs !== undefined && (
+        <>
+          <Ionicons name="folder-outline" size={size} color={S.ink3} style={{ marginLeft: 8 }} />
+          <Text style={[shaped.count, { color: S.ink3, fontSize: size - 1 }]}>{e.subs}</Text>
+        </>
+      )}
+    </View>
+  );
+  const picture = (e: ShapedEntry, size: number) => <Ionicons name={e.icon} size={size} color={e.color ?? S.ink2} />;
+  if (look === 'grid') {
+    return (
+      <View style={shaped.grid}>
+        {entries.map((e) => (
+          <View key={e.key} ref={e.ref} collapsable={false} style={{ flexBasis: gridBasis(gridColumns), flexGrow: 1 }}>
+            <Pressable {...lift()} ref={e.nodeRef} onPress={e.onPress} onLongPress={e.onLongPress} style={[shaped.tile, softCardFrame(S, cardRadius(16)), { backgroundColor: S.card }]}>
+              <View style={[shaped.tilePic, { backgroundColor: S.fill }]}>{picture(e, 30)}</View>
+              <Text style={[shaped.tileName, { color: S.ink }]} numberOfLines={2}>
+                {e.name}
+              </Text>
+              {meta(e, 12)}
+            </Pressable>
+          </View>
+        ))}
+        {Array.from({ length: gridFillerCount(entries.length, gridColumns) }).map((_, i) => (
+          <View key={`filler-${i}`} style={{ flexBasis: gridBasis(gridColumns), flexGrow: 1 }} />
+        ))}
+      </View>
+    );
+  }
+  if (look === 'list') {
+    return (
+      <View style={shaped.stack}>
+        {entries.map((e) => (
+          <View key={e.key} ref={e.ref} collapsable={false}>
+            <Pressable {...lift()} ref={e.nodeRef} onPress={e.onPress} onLongPress={e.onLongPress} style={[shaped.card, softCardFrame(S), { backgroundColor: S.card }]}>
+              <View style={[shaped.cardPic, { backgroundColor: S.fill }]}>{picture(e, 26)}</View>
+              <View style={shaped.body}>
+                <Text style={[shaped.cardName, { color: S.ink }]} numberOfLines={2}>
+                  {e.name}
+                </Text>
+                {meta(e, 13)}
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={S.ink3} style={{ alignSelf: 'center' }} />
+            </Pressable>
+          </View>
+        ))}
+      </View>
+    );
+  }
+  return (
+    <View>
+      {entries.map((e) => (
+        <View key={e.key} ref={e.ref} collapsable={false}>
+          <Pressable ref={e.nodeRef} onPress={e.onPress} onLongPress={e.onLongPress} style={shaped.line}>
+            <View style={[shaped.linePic, { backgroundColor: S.fill, borderColor: S.line }]}>{picture(e, 20)}</View>
+            <View style={shaped.body}>
+              <Text style={[shaped.lineName, { color: S.ink }]} numberOfLines={1}>
+                {e.name}
+              </Text>
+              {meta(e, 13)}
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={S.ink3} />
+          </Pressable>
+          <View pointerEvents="none" style={[shaped.rule, { backgroundColor: S.line }]} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const shaped = StyleSheet.create({
+  grid: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 12, marginBottom: 4 },
+  tile: { padding: 10, gap: 4, overflow: 'hidden' },
+  tilePic: { width: '100%', aspectRatio: 16 / 9, borderRadius: 10, marginBottom: 4, alignItems: 'center', justifyContent: 'center' },
+  tileName: { fontSize: 13, fontFamily: SOFT_SEMIBOLD },
+  stack: { gap: 10, marginBottom: 2 },
+  card: { flexDirection: 'row', gap: 12, padding: 10 },
+  cardPic: { width: 104, aspectRatio: 4 / 3, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  cardName: { fontSize: 15, fontFamily: SOFT_SEMIBOLD },
+  body: { flex: 1, minWidth: 0, gap: 4, justifyContent: 'center' },
+  line: { flexDirection: 'row', alignItems: 'center', gap: 14, height: 68 },
+  linePic: { width: 40, height: 49, borderRadius: 8, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' },
+  lineName: { fontSize: 16, fontFamily: SOFT_SEMIBOLD },
+  rule: { position: 'absolute', left: 54, right: 0, bottom: 0, height: StyleSheet.hairlineWidth },
+  meta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  count: { fontFamily: SOFT_MEDIUM },
+});
 
 const FOLDER_GAP = 10;
 
