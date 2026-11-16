@@ -331,13 +331,17 @@ class FlorisImeService : LifecycleInputMethodService() {
         val w = window.window ?: return
         val windowHeight = inputWindowView?.height ?: 0
         val top = (windowHeight - inputViewSize.height).coerceAtLeast(0)
-        if (EvaBlur.enabled.value && prefs.keyboard.evaOpacity.get() < 1f && inputViewSize.height > 0) {
-            // Almost transparent: the drawable only shapes the blur region, the theme paints the colour.
+        if (prefs.keyboard.evaOpacity.get() < 1f && inputViewSize.height > 0) {
+            // A near-transparent backdrop over the keyboard's own area lets the app behind show through
+            // the ground we paint at less than full opacity; where Android supports cross-window blur it
+            // also blurs what shows through. Without this the IME window stays opaque and the opacity
+            // slider shows nothing at all - the bug on phones with no cross-window blur (Nothing,
+            // Samsung), which the user caught, 2026-11-16. The blur was only ever a bonus on top.
             val backdrop = android.graphics.drawable.InsetDrawable(
                 android.graphics.drawable.ColorDrawable(0x01000000), 0, top, 0, 0,
             )
             w.setBackgroundDrawable(backdrop)
-            w.setBackgroundBlurRadius((24 * resources.displayMetrics.density).toInt())
+            w.setBackgroundBlurRadius(if (EvaBlur.enabled.value) (24 * resources.displayMetrics.density).toInt() else 0)
             evaBlurApplied = true
         } else if (evaBlurApplied) {
             // Back to the theme's own background: TRANSPARENT, never null - a window with no
@@ -733,12 +737,12 @@ class FlorisImeService : LifecycleInputMethodService() {
         // ground colour comes from the theme's own "eva-ground" element; a veil slider then tints it
         // toward the theme's extreme (white in a light theme, black in a dark one). Replaced the old
         // on/off "Прозора підкладка" switch, 2026-11-16.
-        val blurAvailable by EvaBlur.enabled.collectAsState()
         val opacity by prefs.keyboard.evaOpacity.observeAsState()
         val veil by prefs.keyboard.evaVeil.observeAsState()
         val seeThrough = opacity < 1f
-        val blurOn = blurAvailable && seeThrough
-        LaunchedEffect(inputViewSize, blurOn) { updateEvaBlur() }
+        // The window must go translucent whenever the ground is see-through, blur or not; re-run as
+        // soon as that crosses (not only when the blurred-region size changes).
+        LaunchedEffect(inputViewSize, seeThrough) { updateEvaBlur() }
         val groundStyle = rememberSnyggThemeQuery("eva-ground", attributes)
         val base = groundStyle.background().takeIf { it.isSpecified }?.copy(alpha = 1f)
             ?: if (isSystemInDarkTheme()) Color.Black else Color(0xFFE8E8E8)
