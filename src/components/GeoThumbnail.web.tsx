@@ -14,3 +14,6 @@ export default function GeoThumbnail(_props: {
 }) {
   return null;
 }
+
+// The browser draws no pictures (see above), so a moving list has nothing to wait for.
+export function noteListScrolling() {}

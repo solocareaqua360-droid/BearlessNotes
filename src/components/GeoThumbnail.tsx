@@ -39,6 +39,22 @@ function fileOf(key: string): string | null {
 // and one whose card has scrolled away (or closed) before its turn is not drawn at all - it is asked again when it is
 // back. A kept file needs no turn.
 const MAX_DRAWS = 3;
+// AND NOT WHILE A LIST MOVES: drawing a picture is the map's own work on the phone, and done during a fling it took
+// every other frame (1600 points: half the frames 46 ms, against 13 ms for the same list without pictures). A list
+// says it is moving (noteListScrolling); a drawing waits until it has stood still for a moment.
+let movingUntil = 0;
+export function noteListScrolling() {
+  movingUntil = Date.now() + 350;
+}
+const stillNow = () =>
+  new Promise<void>((resolve) => {
+    const check = () => {
+      const wait = movingUntil - Date.now();
+      if (wait <= 0) resolve();
+      else setTimeout(check, wait + 20);
+    };
+    check();
+  });
 let drawing = 0;
 const waitingTurn: (() => void)[] = [];
 const wanted = new Map<string, number>();
@@ -69,6 +85,7 @@ async function pictureFor(key: string, draw: () => Promise<string>): Promise<str
   const release = await turn();
   let tmp: string;
   try {
+    await stillNow();
     if (!(wanted.get(key) ?? 0)) throw new Error('scrolled away');
     tmp = await draw();
   } finally {

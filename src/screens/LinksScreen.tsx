@@ -37,6 +37,7 @@ import type { FolderItem } from '../hooks/useAllFolderItems';
 import { viewSection } from '../navigation/topMenu';
 import { favoriteMenuRow } from '../navigation/favorites';
 import { stressPoints, useGeoStress } from '../utils/geoStress';
+import { noteListScrolling } from '../components/GeoThumbnail';
 import type { MenuEntry } from '../components/surfaces/Menu';
 import { useSoft } from '../theme/soft';
 import { GestureDetector } from 'react-native-gesture-handler';
@@ -1885,6 +1886,10 @@ export default function LinksScreen({
             ref={carrying.scrollRef as never}
             {...listProps}
             {...LAZY}
+            onScroll={(e) => {
+              noteListScrolling();
+              listProps.onScroll(e);
+            }}
             data={linksHere}
             keyExtractor={(item) => item.id}
             contentContainerStyle={[
@@ -1904,6 +1909,10 @@ export default function LinksScreen({
             ref={carrying.scrollRef as never}
             {...listProps}
             {...LAZY}
+            onScroll={(e) => {
+              noteListScrolling();
+              listProps.onScroll(e);
+            }}
             // A row of the grid is one item: two cards (three where the column is wide), the last row made up with
             // invisible fillers so a lone card keeps its siblings' size - "остання картка чомусь завжди велика".
             data={chunked(trashOpen ? trashedLinks : linksHere, listWidth >= 640 ? 3 : 2)}
@@ -1935,6 +1944,10 @@ export default function LinksScreen({
             ref={carrying.scrollRef as never}
             {...listProps}
             {...LAZY}
+            onScroll={(e) => {
+              noteListScrolling();
+              listProps.onScroll(e);
+            }}
             data={trashOpen ? trashedLinks : linksHere}
             keyExtractor={(item) => item.id}
             contentContainerStyle={[
