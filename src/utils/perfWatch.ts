@@ -265,3 +265,25 @@ export function perfSummary(since: number): string {
     `зависань ${late.length}${late.length ? `, найдовше ${Math.round(worst)} мс` : ''}`,
   ].join('\n');
 }
+
+// WHERE INSIDE ONE BIG RENDER THE TIME GOES (2026-11-16, the optimisation pass): checkpoints through a screen's body; with
+// the trace on, a render over 8 ms prints the stretches between them that took 3 ms or more.
+export function usePerfPoints(label: string): (name: string) => void {
+  const t0 = Date.now();
+  const marks: [string, number][] = [];
+  useLayoutEffect(() => {
+    if (!trace) return;
+    const total = Date.now() - t0;
+    if (total < 8 || marks.length === 0) return;
+    let last = t0;
+    const slow: string[] = [];
+    for (const [name, at] of marks) {
+      if (at - last >= 3) slow.push(`→${name} ${at - last}`);
+      last = at;
+    }
+    tline(`points ${label} ${total}ms: ${slow.join(' ')}`);
+  });
+  return (name: string) => {
+    if (trace) marks.push([name, Date.now()]);
+  };
+}
