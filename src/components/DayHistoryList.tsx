@@ -1,3 +1,4 @@
+import { useRenderCount } from '../utils/perfWatch';
 import { useState } from 'react';
 import { localPathFor } from '../utils/localPath';
 import { useRecordColour } from '../theme/ThemeProvider';
@@ -100,6 +101,7 @@ export default function DayHistoryList({
   onToggleExpanded?: () => void;
   hideHeader?: boolean;
 }) {
+  useRenderCount('DayHistoryList');
   const recordColour = useRecordColour();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [expandedSelf, setExpandedSelf] = useState(false);

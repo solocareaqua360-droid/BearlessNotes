@@ -1,3 +1,4 @@
+import { useRenderCount } from '../utils/perfWatch';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import ScreenGround from '../components/ScreenGround';
 import { useRecordColour, useStyles, useTheme } from '../theme/ThemeProvider';
@@ -2411,6 +2412,7 @@ export default function CalendarScreen() {
 // An empty day in the overview: a short card in the colour the day's
 // sheet would have, like the diary search's cards, saying only the date.
 function ShortDayCard({ id, label, height, onPress }: { id: string; label: string; height: number; onPress: () => void }) {
+  useRenderCount('ShortDayCard');
   const recordColour = useRecordColour();
   const S = useContext(SoftCalendarContext);
   const own = recordColour(id);
@@ -2500,6 +2502,7 @@ function DayCell({
   height?: number;
   onPress: () => void;
 }) {
+  useRenderCount('DayCell');
   const baseStyles = useStyles(makeStyles);
   const S = useContext(SoftCalendarContext);
   const styles = S ? softenCalendar(baseStyles, S) : baseStyles;
