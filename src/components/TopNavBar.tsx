@@ -1,3 +1,4 @@
+import { memoLatest } from '../utils/memoLatest';
 import { useRenderCount } from '../utils/perfWatch';
 import { Ionicons } from './icons/Ionicons';
 import { chromeCover, chromeNodeRef } from '../utils/chromeMorph';
@@ -1127,7 +1128,9 @@ function DeskPill({
 // by side, each as wide as the plate, and the row rides the pager's own position - a swipe between desks carries
 // the name out one side and the next in from the other, and a tap does the same, since the pager moves either way.
 // Without a position (the web build) only the desk in front is drawn, still.
-function DeskTitles({
+// Drawn again only when what it shows changes (utils/memoLatest).
+const DeskTitles = memoLatest(DeskTitlesView);
+function DeskTitlesView({
   left,
   desks,
   position,

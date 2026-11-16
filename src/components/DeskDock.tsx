@@ -1,3 +1,4 @@
+import { memoLatest } from '../utils/memoLatest';
 import { useRenderCount } from '../utils/perfWatch';
 import { useRenderTimer } from '../utils/perfWatch';
 import { ReactElement, ReactNode, useEffect, useRef, useState } from 'react';
@@ -197,7 +198,8 @@ function GrowOnTouch({ style, children }: { style: object; children: ReactNode }
 // Drawn in the capsule's rest size (a stadium); on its way to another place it stretches with it.
 const HW = BEAD_W + HERE_GROW * 2;
 const HH = REST_H;
-function HereBubble({ soft }: { soft: SoftTokens }) {
+const HereBubble = memoLatest(HereBubbleView);
+function HereBubbleView({ soft }: { soft: SoftTokens }) {
   useRenderCount('HereBubble');
   // On white the pale film vanishes: the light theme's film is deeper and a fine dark line holds the bubble's edge.
   const light = !soft.dark;
@@ -232,7 +234,9 @@ function useHereScale(active: boolean) {
   return useAnimatedStyle(() => ({ transform: [{ scale: k.value }] }));
 }
 
-function DeskBeadButton({ d, i, bw, pad, soft, onPick, active, onLens }: { d: DeskBead; i: number; bw: number; pad: number; soft: SoftTokens; onPick: (i: number) => void; active?: boolean; onLens: (i: number | null) => void }) {
+// Drawn again only when what it shows changes (utils/memoLatest; six redraws per desk switch, measured 2026-11-16).
+const DeskBeadButton = memoLatest(DeskBeadButtonView);
+function DeskBeadButtonView({ d, i, bw, pad, soft, onPick, active, onLens }: { d: DeskBead; i: number; bw: number; pad: number; soft: SoftTokens; onPick: (i: number) => void; active?: boolean; onLens: (i: number | null) => void }) {
   useRenderCount('DeskBeadButton');
   const glassOn = useDockGlass();
   const g = useGrow();
@@ -265,7 +269,8 @@ function DeskBeadButton({ d, i, bw, pad, soft, onPick, active, onLens }: { d: De
 }
 
 // The balloon among the places: drawn like a desk, the window it opens grows out of it (utils/assistMorph).
-function AssistBead({ i, bw, pad, soft, active, onPress, onLens }: { i: number; bw: number; pad: number; soft: SoftTokens; active: boolean; onPress: () => void; onLens: (i: number | null) => void }) {
+const AssistBead = memoLatest(AssistBeadView);
+function AssistBeadView({ i, bw, pad, soft, active, onPress, onLens }: { i: number; bw: number; pad: number; soft: SoftTokens; active: boolean; onPress: () => void; onLens: (i: number | null) => void }) {
   useRenderCount('AssistBead');
   const glassOn = useDockGlass();
   const g = useGrow();

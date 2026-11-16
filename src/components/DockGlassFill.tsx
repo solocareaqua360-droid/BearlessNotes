@@ -1,5 +1,5 @@
 import { useRenderCount } from '../utils/perfWatch';
-import { useId, useState } from 'react';
+import { memo, useId, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Defs, Ellipse, LinearGradient, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { BlurView } from 'expo-blur';
@@ -45,7 +45,10 @@ const FILM_ALPHA: Record<string, number> = { dark: 0.69, light: 0.78, default: 0
 // `intensity`: a stronger blur for the same reason - what passes behind a sheet must read as a smear, not as cards (the
 // user, 2026-10-25: «зливається текст блюр повинен бути сильнішим фон просвічує»).
 // `airy`: the desks' dock, lighter than the other capsules so «where you are» on it has the weight (the user, 2026-10-29).
-export default function DockGlassFill({ soft, paused: still, radius, dense, coat, intensity, airy }: { soft: SoftTokens; paused?: boolean; radius?: number; dense?: boolean; coat?: number; intensity?: number; airy?: boolean }) {
+// Drawn again only when its own props change (2026-11-16, measured: twelve redraws per desk switch, four pieces of glass
+// times three passes of the dock, none of them with anything new).
+export default memo(DockGlassFill);
+function DockGlassFill({ soft, paused: still, radius, dense, coat, intensity, airy }: { soft: SoftTokens; paused?: boolean; radius?: number; dense?: boolean; coat?: number; intensity?: number; airy?: boolean }) {
   useRenderCount('DockGlassFill');
   const theme = useTheme();
   const g = theme.glass;
