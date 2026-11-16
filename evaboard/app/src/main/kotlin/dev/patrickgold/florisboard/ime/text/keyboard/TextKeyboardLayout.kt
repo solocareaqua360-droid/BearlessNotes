@@ -436,9 +436,10 @@ private fun TextKeyButton(
     }
 }
 
-// evaBoard: the space cursor touchpad buzzes only when the step this gesture event covers is this
-// small or smaller (a slow, precise move); longer steps are a fast sweep and stay silent.
-private const val SPACE_CURSOR_HAPTIC_STEP = 2
+// evaBoard: the space cursor touchpad buzzes a step only when at least this many ms passed since the
+// previous one (a slow, careful move near the target); steps closer together are a fast sweep and stay
+// silent. Bigger = quieter (buzzes only when you really slow down).
+private const val SPACE_CURSOR_HAPTIC_GAP_MS = 55L
 
 @Suppress("unused_parameter")
 private class TextKeyboardLayoutController(
@@ -463,6 +464,8 @@ private class TextKeyboardLayoutController(
     val fadingGlide = mutableStateListOf<Pair<GlideTypingGesture.Detector.Position, Long>>()
     var fadingGlideRadius by mutableFloatStateOf(0.0f)
     private val swipeGestureDetector = SwipeGesture.Detector(this)
+    // evaBoard: when the last space-cursor step buzzed, to space the haptics out by speed (see onSwipe)
+    private var lastSpaceCursorStepMs = 0L
 
     lateinit var keyboard: TextKeyboard
     var size = Size.Zero
@@ -897,17 +900,20 @@ private class TextKeyboardLayoutController(
                     val firstMove = !pointer.hasTriggeredGestureMove
                     val dx = event.relUnitCountX
                     val dy = event.relUnitCountY
+                    // Speed is the TIME between steps, not the count: the gesture fires every fixed
+                    // distance, so the step size stays ~constant whatever the speed - what changes is how
+                    // often the steps come. A long gap since the last step = a slow, careful move near the
+                    // target, so it buzzes; steps packed close together are a fast sweep, and stay silent
+                    // (the user's ask, 2026-11-16). SPACE_CURSOR_HAPTIC_GAP_MS is the cutoff.
+                    val nowMs = android.os.SystemClock.uptimeMillis()
+                    val slowStep = (nowMs - lastSpaceCursorStepMs) >= SPACE_CURSOR_HAPTIC_GAP_MS
+                    var moved = false
                     // The very first move also carries the unit that armed the gesture; swallow it once,
                     // on whichever axis actually moved first, so the caret does not jump on activation.
                     fun step(code: Int, raw: Int, swallowActivation: Boolean) {
                         val count = abs(raw) - if (firstMove && swallowActivation) 1 else 0
                         if (count > 0) {
-                            // Buzz only while moving slowly (a short step per event) - near the target you
-                            // feel each letter; during a fast sweep the steps are long and stay silent
-                            // (the user's ask, 2026-11-16). SPACE_CURSOR_HAPTIC_STEP is the cutoff.
-                            if (count <= SPACE_CURSOR_HAPTIC_STEP) {
-                                inputFeedbackController?.gestureMovingSwipe(TextKeyData.SPACE)
-                            }
+                            moved = true
                             if (!pointer.hasTriggeredMassSelection) {
                                 pointer.hasTriggeredMassSelection = true
                                 editorInstance.massSelection.begin()
@@ -919,6 +925,10 @@ private class TextKeyboardLayoutController(
                     }
                     if (dx != 0) step(if (dx < 0) KeyCode.ARROW_LEFT else KeyCode.ARROW_RIGHT, dx, swallowActivation = true)
                     if (dy != 0) step(if (dy < 0) KeyCode.ARROW_UP else KeyCode.ARROW_DOWN, dy, swallowActivation = dx == 0)
+                    if (moved) {
+                        lastSpaceCursorStepMs = nowMs
+                        if (slowStep) inputFeedbackController?.gestureMovingSwipe(TextKeyData.SPACE)
+                    }
                     true
                 } else {
                     when (event.direction) {
