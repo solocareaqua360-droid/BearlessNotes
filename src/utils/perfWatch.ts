@@ -287,3 +287,29 @@ export function usePerfPoints(label: string): (name: string) => void {
     if (trace) marks.push([name, Date.now()]);
   };
 }
+
+// HOW MANY TIMES EACH SMALL PIECE DREW (2026-11-16): a row or a card takes a millisecond, but forty of them redrawn for a
+// context they do not even read is the cost. With the trace on, the counts of the half second after the first one are
+// printed together: «count StartRow×38 41ms, FolderItemCard×12 30ms».
+const counts = new Map<string, { n: number; ms: number }>();
+let countFlush: ReturnType<typeof setTimeout> | null = null;
+export function useRenderCount(label: string): void {
+  const t0 = trace ? Date.now() : 0;
+  useLayoutEffect(() => {
+    if (!trace) return;
+    const c = counts.get(label) ?? { n: 0, ms: 0 };
+    c.n += 1;
+    c.ms += Date.now() - t0;
+    counts.set(label, c);
+    if (!countFlush)
+      countFlush = setTimeout(() => {
+        countFlush = null;
+        const line = [...counts.entries()]
+          .sort((a, b) => b[1].ms - a[1].ms)
+          .map(([l, v]) => `${l}×${v.n} ${v.ms}ms`)
+          .join(', ');
+        counts.clear();
+        tline(`count ${line}`);
+      }, 600);
+  });
+}

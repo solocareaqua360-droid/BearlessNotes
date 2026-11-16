@@ -1,3 +1,4 @@
+import { useRenderCount } from '../utils/perfWatch';
 import { usePerfPoints, useRenderTimer } from '../utils/perfWatch';
 import { hasTextSelection } from '../utils/textSelection';
 import { type ComponentProps, type ReactElement, type ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -4499,6 +4500,7 @@ function StartRow({
   // A folder's row: tinted while a carried card is over it.
   dropPath?: string;
 }) {
+  useRenderCount('StartRow');
   const S = useSoft();
   // A hold lifts the row over the blur, the way every hold menu does (utils/heldNode).
   const held = useHeld();
@@ -4531,6 +4533,7 @@ function StartRow({
 
 // «Думки» as the first of the start list's folders (the user, 2026-10-28): what is not yet sorted, said beside it.
 function ThoughtsRow({ last }: { last: boolean }) {
+  useRenderCount('ThoughtsRow');
   const S = useSoft();
   const { countOf } = useThoughts(true);
   const loose = countOf(null);
@@ -4540,6 +4543,7 @@ function ThoughtsRow({ last }: { last: boolean }) {
 // A section's head on the start list: the name (with its «›») opens the whole list, anywhere else on the row folds the rows under it.
 // Folded, the head says how many it holds.
 function StartHead({ title, folded, count, onOpen, onToggle }: { title: string; folded: boolean; count: number; onOpen: () => void; onToggle: () => void }) {
+  useRenderCount('StartHead');
   const S = useSoft();
   return (
     <Pressable onPress={onToggle} style={startStyles.head} accessibilityLabel={folded ? `Розгорнути: ${title}` : `Згорнути: ${title}`}>
@@ -4580,6 +4584,7 @@ async function holdStartBase(key: string, label: string, fav: { isOn: (key: stri
 // «ДУМКИ» AND «ОБРАНЕ» (2026-11-02, the user: «базу можна закріпити в обране і вона буде на рівні з думками»): the few bases in use
 // now stand as rows right under «Думки», in the order they were put there; they stay in «Бази» below as well, which can then fold.
 function StartFavorites({ favorites, onFavorites }: { favorites: number; onFavorites: () => void }) {
+  useRenderCount('StartFavorites');
   const { customDatabases, iconFor } = useDatabaseTiles();
   const desksControl = useContext(DesksControlContext);
   const fav = useFavoriteBases();
@@ -4622,6 +4627,7 @@ const startStyles = StyleSheet.create({
 // every base a row opened straight from here). It was the bases put there by hand («Обрані бази»); now it is every listed base, the
 // built-in ones and the user's own. No counts: each would be a listener of its own on the Start.
 function StartBases({ folded, onToggle }: { folded: boolean; onToggle: () => void }) {
+  useRenderCount('StartBases');
   const { customDatabases, iconFor } = useDatabaseTiles();
   const desksControl = useContext(DesksControlContext);
   const fav = useFavoriteBases();
