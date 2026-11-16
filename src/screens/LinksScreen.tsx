@@ -1,3 +1,4 @@
+import { usePerfPoints } from '../utils/perfWatch';
 import { useRenderTimer } from '../utils/perfWatch';
 import { useFolderArrival } from '../navigation/folderArrival';
 import MenuLabel from '../components/MenuLabel';
@@ -209,16 +210,20 @@ export default function LinksScreen({
   category: categoryProp,
   inPane,
 }: Partial<Props> & { category?: 'video' | 'geo' | 'other'; inPane?: boolean }) {
+  const __pt = usePerfPoints('Links');
   useRenderTimer('Links');
+  __pt('L213');
   // The three desks stay in the dock inside a base (deskBeadsBus's useDockDesksHere).
   useDockDesksWhileFocused(!inPane);
   // The laptop's folders stand two across, not one under another.
   const pointerFolders = useDensity() === 'pointer' ? 2 : undefined;
   const theme = useTheme();
+  __pt('L218');
   const S = useSoft();
   const accent = theme.sections.links;
   const accentGlass = withAlpha(accent, 0.55);
   const styles = useStyles(makeStyles);
+  __pt('L222');
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const category = categoryProp ?? route?.params.category ?? 'other';
   // The media bases keep no folders of their own (features.mediaWithoutFolders) - except the geo points, which got
@@ -226,6 +231,7 @@ export default function LinksScreen({
   // The plain links got theirs too (2026-11-16, the user's: «в посиланнях я не можу створити папку… мені треба розкласти
   // мої посилання по папкам») - the base's own folders, like the geo points' collections, called simply «папка».
   const noFolders = FEATURES.mediaWithoutFolders && category !== 'geo' && !FEATURES.baseCollections;
+  __pt('L229');
   // In front: the start desk's recents (geo, YouTube / TikTok, links).
   useTileOpened(category === 'geo' ? 'geo' : category === 'video' ? 'video' : 'links');
   // Neither grid nor list here left room for the dock at the bottom of
@@ -235,6 +241,7 @@ export default function LinksScreen({
   const dockClear = useDockClearance();
   const insets = useSafeAreaInsets();
   const info = CATEGORY_INFO[category];
+  __pt('L238');
   // Geo/video/other share this one screen's code, but each is its own
   // "database" from the user's side - the preferences (view mode, sort,
   // the hidden group row) have to be kept per category, not in one shared
@@ -243,15 +250,18 @@ export default function LinksScreen({
   const linksPrefsKey = `linksPrefs_${category}`;
   const tagKind = TAG_KIND_BY_CATEGORY[category];
   const groupKind = GROUP_KIND_BY_CATEGORY[category];
+  __pt('L246');
   const [links, setLinks] = useState<LinkItem[]>([]);
   const [trashedLinks, setTrashedLinks] = useState<LinkItem[]>([]);
   const [trashOpen, setTrashOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  __pt('L250');
   const [renamingLink, setRenamingLink] = useState<LinkItem | null>(null);
   const [documentPicker, setDocumentPicker] = useState<{ link: LinkItem; documents: PickableDocument[] } | null>(
     null
   );
   const [tagPickerForId, setTagPickerForId] = useState<string | null>(null);
+  __pt('L255');
   // Per-card "..." menu (rename / documents) - one shared piece of state
   // rather than per-row, since only ever one card's menu is open at a time.
   const [cardMenuLinkId, setCardMenuLinkId] = useState<string | null>(null);
@@ -260,22 +270,26 @@ export default function LinksScreen({
   // The badge on a single card, opened outside select mode - distinct
   // from the bulk sheet above, which acts on the whole selection.
   const [singleGroupTargetId, setSingleGroupTargetId] = useState<string | null>(null);
+  __pt('L263');
   // Which card is playing in its own window, and the one full-screen
   // player behind «розгорнути». One at a time: each is a live WebView.
   const [playingLinkId, setPlayingLinkId] = useState<string | null>(null);
   const [fullscreenVideoUrl, setFullscreenVideoUrl] = useState<string | null>(null);
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
+  __pt('L268');
   const [addLinkUrlPromptVisible, setAddLinkUrlPromptVisible] = useState(false);
   const [geoPointSheetVisible, setGeoPointSheetVisible] = useState(false);
   // A point found by the map's own search: the new-point window opens with it filled in.
   const [geoPointInitial, setGeoPointInitial] = useState<{ lat: number; lng: number } | null>(null);
   // The place the map has found right now (typed coordinates or a held pin): the dock's «+» saves it meanwhile.
   const [geoFound, setGeoFound] = useState<{ lat: number; lng: number } | null>(null);
+  __pt('L274');
   // The map's «Шари» (GeoLayersPanel): which folders/points are on the map, and whether its window is open.
   const [layerPick, setLayerPick] = useState<LayerPick>(NO_PICK);
   const [layersOpen, setLayersOpen] = useState(false);
   // «Мапа без інтернету» (the offline regions window), opened from «⋯» while the map is on.
   const [offlineOpen, setOfflineOpen] = useState(false);
+  __pt('L279');
   const [importOpen, setImportOpen] = useState(false);
   // «Рулетка» on the map (GeoMapView's ruler).
   const [rulerOn, setRulerOn] = useState(false);
@@ -284,6 +298,7 @@ export default function LinksScreen({
   // (the same image block + sketch layer a drawn-on photo is, so it can be drawn on again there).
   const snapshotRef = useRef<(() => Promise<string | null>) | null>(null);
   const viewRef = useRef<(() => { lat: number; lng: number; zoom: number }) | null>(null);
+  __pt('L287');
   const shotView = useRef<{ lat: number; lng: number; zoom: number } | null>(null);
   const [mapShot, setMapShot] = useState<string | null>(null);
   const [mapDrawing, setMapDrawing] = useState<{ elements: SketchElement[]; width: number; height: number } | null>(null);
@@ -329,12 +344,14 @@ export default function LinksScreen({
       notify('Мапу вставлено', `У «${noteTitle || 'Без назви'}».`);
     }
   }
+  __pt('L332');
   // «Геоточки» only - see the rail's own shape.onToggle above.
   const [mapVisible, setMapVisible] = useState(false);
   const [detailLinkId, setDetailLinkId] = useState<string | null>(null);
   // Sent here to open one link's card (utils/openRequest - the folders'
   // canvas).
   useOpenRequest('links', links.map((l) => l.id), (id) => setDetailLinkId(id), detailLinkId !== null);
+  __pt('L338');
   // The card the link's sheet was opened from (utils/flipOpen), dropped
   // once the sheet has turned back into it.
   const [linkFlip, setLinkFlip] = useState<FlipFrom | null>(null);
@@ -348,14 +365,17 @@ export default function LinksScreen({
   }, [detailLinkId]);
   const [attachPickerVisible, setAttachPickerVisible] = useState(false);
   const [readerLinkId, setReaderLinkId] = useState<string | null>(null);
+  __pt('L351');
   // Fragments on their way from a link's card into a note - one, or all.
   const [fragmentsToSend, setFragmentsToSend] = useState<{ link: LinkItem; fragments: LinkFragment[] } | null>(null);
   const [namingFragmentsNote, setNamingFragmentsNote] = useState(false);
   const detailLink = detailLinkId ? (links.find((l) => l.id === detailLinkId) ?? null) : null;
+  __pt('L355');
   const readerLink = readerLinkId ? (links.find((l) => l.id === readerLinkId) ?? null) : null;
   const [isAddingLink, setIsAddingLink] = useState(false);
   const [addLinkTitlePrompt, setAddLinkTitlePrompt] = useState<{ url: string; preview: LinkPreview } | null>(null);
   const [justAddedLink, setJustAddedLink] = useState<JustAddedLink | null>(null);
+  __pt('L359');
   const [saveDestinationVisible, setSaveDestinationVisible] = useState(false);
   useEffect(() => {
     if (!justAddedLink || saveDestinationVisible) return;
@@ -373,14 +393,17 @@ export default function LinksScreen({
   // them again.
   const recordLinkIds = useRecordLinkIds();
   const [showRecordLinks, setShowRecordLinks] = useState(false);
+  __pt('L376');
   const technicalDocIds = useTechnicalDocIds();
   const isTechnical = (link: LinkItem) => isTechnicalItem(link.id, link.documentIds, recordLinkIds, technicalDocIds);
   // The stress test's made-up points (utils/geoStress) - the geo base only, in memory only.
   const stress = useGeoStress();
   const stressed = useMemo(() => (stress > 0 && category === 'geo' ? stressPoints(stress) : []), [stress, category]);
+  __pt('L381');
   const allCategoryLinks = [...links, ...(stressed as LinkItem[])].filter((link) => categoryOf(link) === category);
   const recordLinkCount = allCategoryLinks.filter(isTechnical).length;
   const categoryLinks = showRecordLinks ? allCategoryLinks : allCategoryLinks.filter((link) => !isTechnical(link));
+  __pt('L384');
   const list = useDatabaseList<LinkItem>({
     prefsKey: linksPrefsKey,
     groupKind,
@@ -495,6 +518,7 @@ export default function LinksScreen({
     detachTag: list.detachTag as never,
     createFolderTag: list.createFolderTag as never,
   });
+  __pt('L498');
   // Sent here standing in a folder (the start desk's «Робочі столи»).
   useFolderArrival(tagKind, list.explorerMode, list.setListMode, explorer.setPath);
   const linksHere = explorer.visibleItems;
@@ -505,6 +529,7 @@ export default function LinksScreen({
   // Coordinates typed into the search are a place, not a name: the map then keeps every point (no name matches «47.86,
   // 35.11», and the points near the place found are exactly what is worth seeing).
   const searchIsPlace = category === 'geo' && !!parseCoordinatesText(list.searchQuery);
+  __pt('L508');
   // Every point with a place, with its folders - what «Шари» lists and filters.
   const layerPoints: LayerPoint[] =
     category === 'geo'
@@ -531,6 +556,7 @@ export default function LinksScreen({
     () => (tableShown ? tableShown.rows.map((r, i) => ({ id: `table:${i}`, title: r.title, lat: r.point.lat, lng: r.point.lng, table: true })) : []),
     [tableShown]
   );
+  __pt('L534');
   const geoMapPoints: GeoMapPoint[] = [
     ...(searchIsPlace || layersOn ? allCategoryLinks : linksHere)
       .filter((l) => !layersOn || pointShown({ id: l.id, title: '', folders: explorer.foldersOf(l) }, layerPick))
@@ -1400,6 +1426,7 @@ export default function LinksScreen({
     );
   }
 
+  __pt('end');
   return (
     <DatabaseChrome
       swipeScroll={carrying}
