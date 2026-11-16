@@ -43,7 +43,11 @@ const DEFAULT_ZOOM = 5;
 // folded them into one bubble by then anyway.
 const LABEL_MIN_ZOOM = 13;
 
-export type GeoMapPoint = { id: string; title: string; lat: number; lng: number };
+// `table`: a point shown from a spreadsheet and kept nowhere (2026-11-16, the user: «статистичні геоточки, які потрібні
+// раз на місяць... альтернатива excel»): drawn in its own colour, a knot of only such points too.
+export type GeoMapPoint = { id: string; title: string; lat: number; lng: number; table?: boolean };
+import { TABLE_CLUSTER_PROPERTIES, TABLE_POINT_COLOR } from '../utils/geoTable';
+
 
 // Clusters: a point stands alone once the map is zoomed in past where its neighbours would collide with it, and a bubble
 // with a count stands in for a knot of them everywhere else - tapping one flies the camera in.
@@ -147,7 +151,7 @@ export default function GeoMapView({
         .map((p) => ({
           type: 'Feature',
           id: p.id,
-          properties: { pointId: p.id, title: p.title },
+          properties: { pointId: p.id, title: p.title, table: !!p.table },
           geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
         })),
     }),
@@ -169,6 +173,22 @@ export default function GeoMapView({
     if (p) flyTo([p.lng, p.lat], FOCUS_ZOOM);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusId]);
+
+  // A table's points just shown (utils/geoTable): the camera takes them all in.
+  const tableCount = points.reduce((n, p) => (p.table ? n + 1 : n), 0);
+  useEffect(() => {
+    if (!tableCount) return;
+    const t = points.filter((p) => p.table);
+    const lngs = t.map((p) => p.lng);
+    const lats = t.map((p) => p.lat);
+    const west = Math.min(...lngs);
+    const east = Math.max(...lngs);
+    const south = Math.min(...lats);
+    const north = Math.max(...lats);
+    if (west === east && south === north) flyTo([west, south], 12);
+    else cameraRef.current?.fitBounds([west, south, east, north], { padding: { top: 120, left: 40, right: 40, bottom: bottomInset + 40 }, duration: 600 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableCount]);
 
   const [offlineSheetVisible, setOfflineSheetVisible] = useState(false);
 
@@ -317,6 +337,7 @@ export default function GeoMapView({
           cluster
           clusterRadius={50}
           clusterMaxZoom={16}
+          clusterProperties={TABLE_CLUSTER_PROPERTIES as never}
           onPress={async (e) => {
             const feature = e.nativeEvent.features[0];
             if (!feature) return;
@@ -333,7 +354,7 @@ export default function GeoMapView({
             id="bearless-clusters"
             type="circle"
             filter={['has', 'point_count']}
-            paint={{ 'circle-color': theme.accent, 'circle-radius': 17, 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' }}
+            paint={{ 'circle-color': ['case', ['==', ['get', 'tables'], ['get', 'point_count']], TABLE_POINT_COLOR, theme.accent] as never, 'circle-radius': 17, 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' }}
           />
           <Layer
             id="bearless-cluster-count"
@@ -346,7 +367,7 @@ export default function GeoMapView({
             id="bearless-points"
             type="circle"
             filter={['!', ['has', 'point_count']]}
-            paint={{ 'circle-color': theme.accent, 'circle-radius': 11, 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' }}
+            paint={{ 'circle-color': ['case', ['get', 'table'], TABLE_POINT_COLOR, theme.accent] as never, 'circle-radius': 11, 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' }}
           />
           <Layer
             id="bearless-point-dot"

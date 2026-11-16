@@ -38,6 +38,7 @@ import { viewSection } from '../navigation/topMenu';
 import { favoriteMenuRow } from '../navigation/favorites';
 import { stressPoints, useGeoStress } from '../utils/geoStress';
 import { noteListScrolling } from '../components/GeoThumbnail';
+import { TABLE_POINT_COLOR } from '../utils/geoTable';
 import type { MenuEntry } from '../components/surfaces/Menu';
 import { useSoft } from '../theme/soft';
 import { GestureDetector } from 'react-native-gesture-handler';
@@ -63,7 +64,7 @@ import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import GeoPointEntrySheet from '../components/GeoPointEntrySheet';
 import GeoMapView, { type GeoMapPoint } from '../components/GeoMapView';
-import GeoImportSheet, { type GeoImportProgress } from '../components/GeoImportSheet';
+import GeoImportSheet, { importDateCollection, type GeoImportProgress } from '../components/GeoImportSheet';
 import type { GeoImportRow } from '../utils/geoImport';
 import { extractMapsCoordinates } from '../utils/linkPreview';
 import GeoLayersPanel, { NO_PICK, pickActive, pointShown, type LayerPick, type LayerPoint } from '../components/GeoLayersPanel';
@@ -521,10 +522,42 @@ export default function LinksScreen({
     )
   ).sort((a, b) => a.localeCompare(b, 'uk'));
   const layersOn = pickActive(layerPick);
-  const geoMapPoints: GeoMapPoint[] = (searchIsPlace || layersOn ? allCategoryLinks : linksHere)
-    .filter((l) => !layersOn || pointShown({ id: l.id, title: '', folders: explorer.foldersOf(l) }, layerPick))
-    .filter((l): l is LinkItem & { geoLat: number; geoLng: number } => l.geoLat != null && l.geoLng != null)
-    .map((l) => ({ id: l.id, title: l.title || hostnameOf(l.url), lat: l.geoLat, lng: l.geoLng }));
+  // A TABLE SHOWN ON THE MAP and kept nowhere (GeoImportSheet's «Показати на карті», utils/geoTable): its rows, the
+  // file's name for the capsule over the map. Gone with the capsule's ✕ or when the screen closes.
+  const [tableShown, setTableShown] = useState<{ name: string; rows: Extract<GeoImportRow, { kind: 'point' }>[] } | null>(null);
+  const tablePoints: GeoMapPoint[] = useMemo(
+    () => (tableShown ? tableShown.rows.map((r, i) => ({ id: `table:${i}`, title: r.title, lat: r.point.lat, lng: r.point.lng, table: true })) : []),
+    [tableShown]
+  );
+  const geoMapPoints: GeoMapPoint[] = [
+    ...(searchIsPlace || layersOn ? allCategoryLinks : linksHere)
+      .filter((l) => !layersOn || pointShown({ id: l.id, title: '', folders: explorer.foldersOf(l) }, layerPick))
+      .filter((l): l is LinkItem & { geoLat: number; geoLng: number } => l.geoLat != null && l.geoLng != null)
+      .map((l) => ({ id: l.id, title: l.title || hostnameOf(l.url), lat: l.geoLat, lng: l.geoLng })),
+    ...tablePoints,
+  ];
+  // A table's point tapped: what the row says, and the way to keep just this one.
+  async function openTablePoint(id: string) {
+    const row = tableShown?.rows[Number(id.slice('table:'.length))];
+    if (!row) return;
+    const choice = await ask({
+      title: row.title,
+      message: [`${row.point.lat.toFixed(5)}, ${row.point.lng.toFixed(5)}`, row.folder, row.note].filter(Boolean).join('\n'),
+      actions: [
+        { id: 'keep', label: 'Зберегти в геоточки', icon: 'download-outline' },
+        { id: 'maps', label: 'Відкрити в Google Maps', icon: 'navigate-outline' },
+      ],
+    });
+    if (choice === 'maps') Linking.openURL(mapsUrlForLatLng(row.point)).catch(() => {});
+    else if (choice === 'keep') {
+      try {
+        await importGeoPoints([row], importDateCollection(), () => {});
+        notify('Збережено', row.folder ? `«${row.title}» - у підбірці «${row.folder}».` : `«${row.title}» - у підбірці «${importDateCollection()}».`);
+      } catch (e) {
+        notify('Не вдалося зберегти', (e as Error).message);
+      }
+    }
+  }
 
   // Carrying a card into a folder - see useExplorerCarry, which is all of
   // it: the gesture, the undo toast, and keeping a carried card alive
@@ -1592,7 +1625,7 @@ export default function LinksScreen({
             onSave={submitNewLinkUrl}
           />
 
-          <GeoImportSheet visible={importOpen} onClose={() => setImportOpen(false)} onImport={importGeoPoints} />
+          <GeoImportSheet visible={importOpen} onClose={() => setImportOpen(false)} onImport={importGeoPoints} onShow={(rows, name) => setTableShown({ name, rows })} />
 
           <SketchEditor
             visible={mapShot !== null && mapDrawing === null}
@@ -1881,7 +1914,7 @@ export default function LinksScreen({
           <GeoMapView
             points={geoMapPoints}
             searchText={list.searchQuery}
-            onPressPoint={(id) => setDetailLinkId(id)}
+            onPressPoint={(id) => (id.startsWith('table:') ? openTablePoint(id) : setDetailLinkId(id))}
             bottomInset={dockClear + insets.bottom}
             onAddAt={(point) => {
               setGeoPointInitial(point);
@@ -1895,6 +1928,20 @@ export default function LinksScreen({
             offlineOpen={offlineOpen}
             onOfflineClose={() => setOfflineOpen(false)}
           />
+          {tableShown && (
+            // The shown table's capsule: what it is, how many, and the ✕ that takes it off the map.
+            <View style={[styles.tableCapsule, { top: listTopPad + 6 }]} pointerEvents="box-none">
+              <View style={[styles.tableCapsuleBody, { backgroundColor: theme.raised }]}>
+                <View style={[styles.tableDot, { backgroundColor: TABLE_POINT_COLOR }]} />
+                <Text style={styles.tableCapsuleText} numberOfLines={1}>
+                  {`${tableShown.name} · ${tableShown.rows.length}`}
+                </Text>
+                <Pressable hitSlop={10} onPress={() => setTableShown(null)} accessibilityLabel="Прибрати таблицю з карти">
+                  <Ionicons name="close" size={18} color={theme.ink.muted} />
+                </Pressable>
+              </View>
+            </View>
+          )}
           {layersOpen && !list.isSearching && (
             <GeoLayersPanel
               folders={layerFolders}
@@ -2098,6 +2145,11 @@ const makeStyles = (t: Theme) =>
   gridPage: {
     paddingVertical: 8,
   },
+  // The shown table's capsule over the map (utils/geoTable).
+  tableCapsule: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
+  tableCapsuleBody: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 38, paddingLeft: 12, paddingRight: 12, borderRadius: 19, maxWidth: '86%', boxShadow: '0 2px 10px rgba(0,0,0,0.18)' } as never,
+  tableDot: { width: 10, height: 10, borderRadius: 5 },
+  tableCapsuleText: { fontSize: 14, fontFamily: FONT_SEMIBOLD, color: t.ink.primary, flexShrink: 1 },
   // One row of the grid as a list item: the gap the wrapped grid had between its rows.
   gridLine: { marginBottom: 12 },
   gridRows: {

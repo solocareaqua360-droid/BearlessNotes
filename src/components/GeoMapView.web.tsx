@@ -9,6 +9,7 @@ import { isDesktopShell } from '../utils/desktopBridge.web';
 import { confirm } from './surfaces/Ask';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import type { GeoMapPoint } from './GeoMapView';
+import { TABLE_CLUSTER_PROPERTIES, TABLE_POINT_COLOR } from '../utils/geoTable';
 
 export type { GeoMapPoint } from './GeoMapView';
 
@@ -96,7 +97,7 @@ function toGeoJson(points: GeoMapPoint[]) {
     type: 'FeatureCollection',
     features: points.map((p) => ({
       type: 'Feature',
-      properties: { pointId: p.id, title: p.title },
+      properties: { pointId: p.id, title: p.title, table: !!p.table },
       geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
     })),
   };
@@ -192,6 +193,7 @@ export default function GeoMapView({
       cluster: true,
       clusterRadius: 50,
       clusterMaxZoom: 16,
+      clusterProperties: TABLE_CLUSTER_PROPERTIES,
     });
     // A knot of points: a bubble with how many are in it.
     m.addLayer({
@@ -200,7 +202,7 @@ export default function GeoMapView({
       source: 'points',
       filter: ['has', 'point_count'],
       paint: {
-        'circle-color': pin,
+        'circle-color': ['case', ['==', ['get', 'tables'], ['get', 'point_count']], TABLE_POINT_COLOR, pin],
         'circle-radius': ['step', ['get', 'point_count'], 16, 10, 20, 50, 26],
         'circle-stroke-width': 3,
         'circle-stroke-color': '#FFFFFF',
@@ -220,7 +222,7 @@ export default function GeoMapView({
       type: 'circle',
       source: 'points',
       filter: ['!', ['has', 'point_count']],
-      paint: { 'circle-color': pin, 'circle-radius': 8, 'circle-stroke-width': 3, 'circle-stroke-color': '#FFFFFF' },
+      paint: { 'circle-color': ['case', ['get', 'table'], TABLE_POINT_COLOR, pin], 'circle-radius': 8, 'circle-stroke-width': 3, 'circle-stroke-color': '#FFFFFF' },
     });
     m.addLayer({
       id: 'point-label',
@@ -324,6 +326,17 @@ export default function GeoMapView({
     const source = map.current?.getSource?.('points');
     if (source) source.setData(toGeoJson(points));
   }, [points]);
+  // A table's points just shown (utils/geoTable): the map takes them all in.
+  const tableCount = points.reduce((n, p) => (p.table ? n + 1 : n), 0);
+  useEffect(() => {
+    const m = map.current;
+    const lib = (window as unknown as { maplibregl?: { LngLatBounds: new () => { extend: (c: [number, number]) => void } } }).maplibregl;
+    if (!tableCount || !m || !lib) return;
+    const bounds = new lib.LngLatBounds();
+    points.filter((p) => p.table).forEach((p) => bounds.extend([p.lng, p.lat]));
+    m.fitBounds(bounds as never, { padding: 80, maxZoom: 13, duration: 600 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableCount]);
 
   // The outlines of what is kept: shown while the panel is open or the kept
   // map is the one drawn.

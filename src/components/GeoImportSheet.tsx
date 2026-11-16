@@ -51,9 +51,14 @@ export default function GeoImportSheet({
   visible,
   onClose,
   onImport,
+  onShow,
 }: {
   visible: boolean;
   onClose: () => void;
+  // «ПОКАЗАТИ НА КАРТІ» (2026-11-16, the user: «додати опцію в попередній перегляд excel таблиці… показати на мапі. Це не
+  // займає місця в firebase і дозволяє зберігати великі обсяги просто в excel»): the chosen rows go onto the map for a
+  // look and are kept nowhere. Only the rows with a place read on the phone - a Maps link needs the network per row.
+  onShow?: (rows: Extract<GeoImportRow, { kind: 'point' }>[], fileName: string) => void;
   // Saves the rows into the folder (null: none), reporting its progress; resolves to what came of it.
   onImport: (
     rows: GeoImportRow[],
@@ -75,6 +80,7 @@ export default function GeoImportSheet({
 
   useEffect(() => {
     if (!visible) return;
+    setPicked(null);
     setFileName('');
     setSheet(null);
     setRoles([]);
@@ -103,7 +109,9 @@ export default function GeoImportSheet({
       setSheet(first);
       setHasHeader(header);
       setRoles(guessGeoRoles(first.grid, header));
-      setFolder(name.replace(/\.(xlsx|xls|csv)$/i, ''));
+      // Empty: a row with no collection of its own goes to the import's date (the field's placeholder says which).
+      setFolder('');
+      setPicked(null);
     } catch (e) {
       notify('Не вдалося прочитати файл', e instanceof Error ? e.message : String(e));
     } finally {
@@ -112,9 +120,34 @@ export default function GeoImportSheet({
   }
 
   const rows = useMemo(() => (sheet ? readGeoRows(sheet.grid, hasHeader, roles) : []), [sheet, hasHeader, roles]);
-  const usable = rows.filter((r) => r.kind !== 'bad');
+  // THE TABLE'S OWN COLLECTIONS, to choose from (its «Підбірка» column): all of them at first; a tap takes one out or
+  // back. What is chosen is what is shown on the map and what is imported.
+  const NONE = '\u200Bбез';
+  const [picked, setPicked] = useState<Set<string> | null>(null);
+  const groups = useMemo(() => {
+    if (!roles.includes('folder')) return [] as { key: string; count: number }[];
+    const counts = new Map<string, number>();
+    rows.forEach((r) => {
+      if (r.kind === 'bad') return;
+      const key = r.folder || NONE;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    });
+    return [...counts.entries()].map(([key, count]) => ({ key, count })).sort((a, b) => a.key.localeCompare(b.key));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, roles]);
+  const inPick = (r: GeoImportRow) => !picked || r.kind === 'bad' || picked.has(r.folder || NONE);
+  function toggleGroup(key: string) {
+    setPicked((prev) => {
+      const next = new Set(prev ?? groups.map((g) => g.key));
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next.size === groups.length ? null : next;
+    });
+  }
+  const usable = rows.filter((r) => r.kind !== 'bad' && inPick(r));
+  const showable = usable.filter((r): r is Extract<GeoImportRow, { kind: 'point' }> => r.kind === 'point');
   const links = rows.filter((r) => r.kind === 'link').length;
-  const bad = rows.length - usable.length;
+  const bad = rows.filter((r) => r.kind === 'bad').length;
   const width = roles.length;
   const header = sheet && hasHeader ? sheet.grid[0] : null;
 
@@ -225,6 +258,23 @@ export default function GeoImportSheet({
                     {bad > 0 ? `${bad} ${plural(bad, 'рядок', 'рядки', 'рядків')} без координат буде пропущено.` : ''}
                   </Text>
                 )}
+                {groups.length > 1 && (
+                  <>
+                    <Text style={styles.section}>Підбірки з таблиці (торк прибирає / повертає)</Text>
+                    <View style={styles.chips}>
+                      {groups.map((g) => {
+                        const on = !picked || picked.has(g.key);
+                        return (
+                          <Pressable key={g.key} onPress={() => toggleGroup(g.key)} style={[styles.chip, !on && styles.chipOff]}>
+                            <Text style={[styles.chipLabel, !on && styles.chipLabelOff]} numberOfLines={1}>
+                              {`${g.key === NONE ? 'Без підбірки' : g.key} · ${g.count}`}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </>
+                )}
                 <Text style={styles.section}>{roles.includes('folder') ? 'Підбірка для рядків без своєї' : 'Підбірка'}</Text>
                 <TextInput
                   value={folder}
@@ -247,6 +297,21 @@ export default function GeoImportSheet({
                 {progress.note ? ` · ${progress.note}` : ''}
               </Text>
             </View>
+          )}
+          {sheet && onShow && !busy && (
+            <Pressable
+              style={[styles.show, showable.length === 0 && { opacity: 0.5 }]}
+              disabled={showable.length === 0}
+              onPress={() => {
+                onShow(showable, fileName);
+                onClose();
+              }}
+            >
+              <Ionicons name="map-outline" size={18} color={theme.ink.primary} />
+              <Text style={styles.showLabel}>
+                Показати на карті {showable.length} · без збереження
+              </Text>
+            </Pressable>
           )}
           {sheet && (
             <Pressable style={[styles.go, (busy || usable.length === 0) && { opacity: 0.5 }]} disabled={busy || usable.length === 0} onPress={run}>
@@ -295,4 +360,6 @@ const makeStyles = (t: Theme) =>
     barFill: { height: '100%', backgroundColor: t.ink.primary },
     go: { height: 50, borderRadius: 25, backgroundColor: t.ink.primary, alignItems: 'center', justifyContent: 'center' },
     goLabel: { fontSize: 16, fontFamily: FONT_BOLD, color: t.raised },
+    show: { height: 48, borderRadius: 24, backgroundColor: t.surface, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+    showLabel: { fontSize: 15, fontFamily: FONT_SEMIBOLD, color: t.ink.primary },
   });
