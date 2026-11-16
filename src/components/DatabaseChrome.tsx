@@ -13,7 +13,8 @@ import type { Theme } from '../theme/tokens';
 import { BackHandler, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from './icons/Ionicons';
-import { useIsFocused, useNavigation } from '@react-navigation/native';
+import { useIsFocused } from '@react-navigation/native';
+import { useSlideSettled } from '../hooks/useSlideSettled';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -324,25 +325,8 @@ export default function DatabaseChrome<T extends { id: string }>({
   // photographs black through its wrapper - see deskShots).
   const deskContentRef = useDeskContent();
   const paneBar = usePaneBar();
-  // THE CARDS AFTER THE WAY IN (2026-11-16, the optimisation pass, measured: a base's first cards were built while its
-  // screen was still sliding in - 20-37% of the frames of the way in dropped, 80-200 ms of the thread). A base pushed over
-  // the desks shows its frame (bar, dock, ground) for the slide and builds its cards the moment the slide is over; a desk
-  // or a pane, which does not slide, builds them at once.
-  const navigationForSlide = useNavigation();
-  const slides = !desk && !paneBar;
-  const [settled, setSettled] = useState(!slides);
-  useEffect(() => {
-    if (settled) return;
-    const done = () => setSettled(true);
-    const off = navigationForSlide.addListener('transitionEnd' as never, done);
-    // A screen opened without a slide (a reset, the first screen) says nothing - it gets its cards a moment later anyway.
-    const timer = setTimeout(done, 420);
-    return () => {
-      off();
-      clearTimeout(timer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // The cards after the way in (hooks/useSlideSettled): a desk or a pane, which does not slide, builds them at once.
+  const settled = useSlideSettled(!desk && !paneBar);
   const topNav = (!!topNavWanted || !!navTitle || !!desk || paneBar) && topNavOn;
   const backTarget = desk ? desk.back : onBack;
   const chromeTop = insets.top + CHROME_TOP + (topNav ? TOP_NAV_SPACE : 0);

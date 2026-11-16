@@ -1,3 +1,4 @@
+import { useSlideSettled } from '../hooks/useSlideSettled';
 import { usePerfPoints } from '../utils/perfWatch';
 import { useRenderTimer } from '../utils/perfWatch';
 import { favoriteMenuRow } from '../navigation/favorites';
@@ -1243,6 +1244,8 @@ export default function CustomDatabaseScreen({
   // the render with this database's own name), and search is the left
   // bead. Not inside another screen's pane.
   const paneBar = usePaneBar();
+  // The records after the way in (hooks/useSlideSettled): a desk or a pane does not slide.
+  const bodySettled = useSlideSettled(!desk && !paneBar && !inPane);
   const bar = useTopNavOn() && (!inPane || paneBar);
   // FRAME B on the Mac: the base's tools, «Вибір» and «⋯» go to the window's toolbar as they go to the phone's bar,
   // and the two capsule rows under it (views, project) are not drawn - the same as under the phone's bar.
@@ -4811,6 +4814,9 @@ export default function CustomDatabaseScreen({
         // zero rows in THIS one (no waybills yet) must still show every
         // driver's own empty row, not the generic "Ще немає записів".
         <View style={{ flex: 1, paddingTop: topPad }}>{renderSchedule(activeView.id, activeView.scheduleConfig)}</View>
+      ) : !bodySettled ? (
+        // The records after the way in (hooks/useSlideSettled).
+        <View style={{ flex: 1 }} />
       ) : isLoading ? (
         <View style={[styles.emptyState, { paddingTop: topPad }]}>
           <ActivityIndicator color={sInk('#fff')} />
