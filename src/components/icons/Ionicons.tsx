@@ -51,6 +51,56 @@ export function lucideElementsOf(name: string): IconElement[] | null {
   return (lucide && LUCIDE[lucide]) || null;
 }
 
+// ONE SHAPE PER ICON (2026-11-16, the optimisation pass, measured: with every icon drawn as an empty square the records of a
+// base were built in 35-43 ms instead of 77-89 - half of a card's cost was its icons). A Lucide icon is up to six shapes
+// (paths, circles, lines, rects), and each was a native shape of its own; drawn with lines only, they are all one outline,
+// so they are joined into ONE path, worked out once per icon and kept. The icons with a filled part keep their shapes.
+const n = (v: string | number | undefined) => Number(v ?? 0);
+function shapeToD([kind, attrs]: IconElement): string | null {
+  const a = attrs as Record<string, string | number>;
+  switch (kind) {
+    case 'path':
+      return String(a.d);
+    case 'circle': {
+      const cx = n(a.cx), cy = n(a.cy), r = n(a.r);
+      return `M${cx - r} ${cy}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`;
+    }
+    case 'ellipse': {
+      const cx = n(a.cx), cy = n(a.cy), rx = n(a.rx), ry = n(a.ry);
+      return `M${cx - rx} ${cy}a${rx} ${ry} 0 1 0 ${2 * rx} 0a${rx} ${ry} 0 1 0 ${-2 * rx} 0Z`;
+    }
+    case 'line':
+      return `M${n(a.x1)} ${n(a.y1)}L${n(a.x2)} ${n(a.y2)}`;
+    case 'polyline':
+    case 'polygon': {
+      const pts = String(a.points).trim().split(/[\s,]+/).map(Number);
+      if (pts.length < 4) return null;
+      let d = `M${pts[0]} ${pts[1]}`;
+      for (let i = 2; i + 1 < pts.length; i += 2) d += `L${pts[i]} ${pts[i + 1]}`;
+      return kind === 'polygon' ? `${d}Z` : d;
+    }
+    case 'rect': {
+      const x = n(a.x), y = n(a.y), w = n(a.width), h = n(a.height);
+      let rx = a.rx !== undefined ? n(a.rx) : a.ry !== undefined ? n(a.ry) : 0;
+      let ry = a.ry !== undefined ? n(a.ry) : rx;
+      rx = Math.min(rx, w / 2);
+      ry = Math.min(ry, h / 2);
+      if (!rx || !ry) return `M${x} ${y}h${w}v${h}h${-w}Z`;
+      return `M${x + rx} ${y}h${w - 2 * rx}a${rx} ${ry} 0 0 1 ${rx} ${ry}v${h - 2 * ry}a${rx} ${ry} 0 0 1 ${-rx} ${ry}h${-(w - 2 * rx)}a${rx} ${ry} 0 0 1 ${-rx} ${-ry}v${-(h - 2 * ry)}a${rx} ${ry} 0 0 1 ${rx} ${-ry}Z`;
+    }
+    default:
+      return null;
+  }
+}
+const joined = new Map<string, string | null>();
+function joinedPath(name: string, elements: IconElement[]): string | null {
+  if (joined.has(name)) return joined.get(name)!;
+  const parts = elements.map(shapeToD);
+  const d = parts.every((p) => p !== null) ? parts.join('') : null;
+  joined.set(name, d);
+  return d;
+}
+
 function IoniconsSoft(props: Props) {
   const { name, size = 12, color = '#000', style, onPress, accessibilityLabel, testID } = props;
   if (perfNoIcons()) return <View style={[{ width: size, height: size }, style as StyleProp<ViewStyle>]} />;
@@ -66,6 +116,7 @@ function IoniconsSoft(props: Props) {
   // Filled Ionicons that mean a state keep a solid form; '-outline'
   // names are always drawn as lines.
   const solid = name === key ? SOLID_IONICONS[key] : undefined;
+  const one = !solid ? joinedPath(lucide!, elements) : null;
   const svg = (
     <Svg
       width={size}
@@ -75,7 +126,9 @@ function IoniconsSoft(props: Props) {
       accessibilityLabel={onPress ? undefined : accessibilityLabel}
       testID={onPress ? undefined : testID}
     >
-      {elements.map((element, i) => {
+      {one ? (
+        <Path d={one} stroke={ink} fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      ) : elements.map((element, i) => {
         if (solid === 'all') return renderElement(element, i, ink, ink);
         if (solid === 'badge') return i === 0 ? renderElement(element, i, ink, ink) : renderElement(element, i, '#FFFFFF', 'none');
         if (solid === 'dot' && i > 0) {
