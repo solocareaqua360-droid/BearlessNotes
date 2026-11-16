@@ -3925,7 +3925,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           keyExtractor={(row) => (isShelf(row) || isHeader(row) || isCells(row) || isStrip(row) ? (row as { key: string }).key : row.id)}
           ListHeaderComponent={header}
           ListEmptyComponent={
-            stage === 'all' && folders.length === 0 && !startHere && !(shelfRows && shelfRows.length > 0) ? <Text style={[styles.hint, { color: S.ink3 }]}>{searching ? 'Нічого не знайдено.' : path ? 'У цій папці ще порожньо.' : projectsHere && focusProj !== NO_PROJECT ? 'У цьому проєкті ще немає папок. Додати: «Без проєкту» → «у проєкт…».' : 'Ще нічого немає.'}</Text> : null
+            stage === 'all' && folders.length === 0 && !startHere && !(shelfRows && shelfRows.length > 0) ? <Text style={[styles.hint, { color: S.ink3 }]}>{searching ? 'Нічого не знайдено.' : path === FAVORITES ? 'Затисни будь-що - нотатку, дошку, посилання, фото - і вибери «В обране».' : path ? 'У цій папці ще порожньо.' : projectsHere && focusProj !== NO_PROJECT ? 'У цьому проєкті ще немає папок. Додати: «Без проєкту» → «у проєкт…».' : 'Ще нічого немає.'}</Text> : null
           }
           renderItem={({ item: row, index: rowIndex }) => withArrival(rowIndex, (() => {
             if (isShelf(row)) return renderShelf(row, rowIndex);
