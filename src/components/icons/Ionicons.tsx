@@ -1,5 +1,6 @@
 import type { ComponentProps } from 'react';
-import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import { LUCIDE_GLYPH } from './lucideGlyphs';
 import { perfNoIcons } from '../../utils/perfWatch';
 import { Ionicons as VectorIonicons } from '@expo/vector-icons';
 import Svg, { Circle, Ellipse, Line, Path, Polygon, Polyline, Rect } from 'react-native-svg';
@@ -133,6 +134,24 @@ function IoniconsSoft(props: Props) {
   // Filled Ionicons that mean a state keep a solid form; '-outline'
   // names are always drawn as lines.
   const solid = name === key ? SOLID_IONICONS[key] : undefined;
+  // AN ICON IS A LETTER (2026-11-16, the user: «так» to the icon font): the line icons are drawn from Lucide's own font
+  // (assets/fonts/lucide.ttf, loaded with the app's fonts before anything is shown) - one Text instead of an Svg of
+  // shapes, which on this phone cost half of a card's building. The few with a filled part (a state: starred, ticked,
+  // a dot) keep their drawing below.
+  const glyph = !solid && lucide ? LUCIDE_GLYPH[lucide] : undefined;
+  if (glyph !== undefined) {
+    return (
+      <Text
+        allowFontScaling={false}
+        onPress={onPress as never}
+        accessibilityLabel={accessibilityLabel}
+        testID={testID}
+        style={[styles.glyph, { fontSize: size, lineHeight: size, width: size, height: size, color: ink }, style as StyleProp<TextStyle>]}
+      >
+        {String.fromCharCode(glyph)}
+      </Text>
+    );
+  }
   const one = !solid ? joinedPath(lucide!, elements) : null;
   const svg = (
     <Svg
@@ -175,3 +194,7 @@ function IoniconsSoft(props: Props) {
 // so the glyph map rides along unchanged.
 export const Ionicons = Object.assign(IoniconsSoft, { glyphMap: VectorIonicons.glyphMap });
 export default Ionicons;
+
+const styles = StyleSheet.create({
+  glyph: { fontFamily: 'lucide', textAlign: 'center', textAlignVertical: 'center', includeFontPadding: false, fontWeight: 'normal', fontStyle: 'normal' },
+});
