@@ -24,10 +24,17 @@ function tline(text: string) {
 export function perfMark(name: string): void {
   if (trace) tline(`mark ${name}`);
 }
+// The experiment's switch (2026-11-16): `mindeva://perf?on=1&icons=0` draws every icon as an empty square of its size, to
+// measure what the icons cost. Never left on: a restart turns it off.
+let noIcons = false;
+export function perfNoIcons(): boolean {
+  return noIcons;
+}
 function onUrl(url: string | null) {
   if (!url || !url.startsWith('mindeva://perf')) return;
   trace = /[?&]on=1/.test(url);
-  tline(trace ? 'trace on' : 'trace off');
+  noIcons = /[?&]icons=0/.test(url);
+  tline(`${trace ? 'trace on' : 'trace off'}${noIcons ? ' · no icons' : ''}`);
 }
 Linking.getInitialURL().then(onUrl).catch(() => {});
 Linking.addEventListener('url', ({ url }) => onUrl(url));

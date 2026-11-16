@@ -1,5 +1,6 @@
 import type { ComponentProps } from 'react';
-import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { perfNoIcons } from '../../utils/perfWatch';
 import { Ionicons as VectorIonicons } from '@expo/vector-icons';
 import Svg, { Circle, Ellipse, Line, Path, Polygon, Polyline, Rect } from 'react-native-svg';
 import { FROM_IONICONS, LUCIDE, SOLID_IONICONS, type IconElement } from './lucideIcons';
@@ -52,6 +53,7 @@ export function lucideElementsOf(name: string): IconElement[] | null {
 
 function IoniconsSoft(props: Props) {
   const { name, size = 12, color = '#000', style, onPress, accessibilityLabel, testID } = props;
+  if (perfNoIcons()) return <View style={[{ width: size, height: size }, style as StyleProp<ViewStyle>]} />;
   const key = typeof name === 'string' && name.endsWith('-outline') ? name.slice(0, -8) : String(name);
   // 'lc:<name>': a Lucide icon chosen by its own name in the icon picker
   // (constants/iconCatalog) - no Ionicons name stands behind it.
