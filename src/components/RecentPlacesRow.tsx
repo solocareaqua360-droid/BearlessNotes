@@ -1,3 +1,4 @@
+import { memoLatest } from '../utils/memoLatest';
 import { useRenderCount } from '../utils/perfWatch';
 import { memo, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -37,7 +38,7 @@ function go(route: string, params?: Record<string, unknown>) {
 }
 
 // `kinds`: only these kinds of place (the start desk's list keeps notes and boards).
-export default function RecentPlacesRow({ side, kinds }: { side: number; kinds?: RecentPlace['kind'][] }) {
+function RecentPlacesRow({ side, kinds }: { side: number; kinds?: RecentPlace['kind'][] }) {
   useRenderCount('RecentPlacesRow');
   const S = useSoft();
   const desksControl = useContext(DesksControlContext);
@@ -269,3 +270,6 @@ const styles = StyleSheet.create({
   cardFoot: { height: 40, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12 },
   cardLabel: { flex: 1, fontSize: 13, fontFamily: SOFT_MEDIUM },
 });
+
+// Drawn again only when what it shows changes (utils/memoLatest) - the Start redrew it on every return.
+export default memoLatest(RecentPlacesRow);

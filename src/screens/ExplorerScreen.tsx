@@ -9,6 +9,7 @@ import { askFates, boardContentsFates, confirmFates, FATE, type FateEntry, type 
 import { folderPathFromName, resolveFolderPath } from '../utils/folderName';
 import { usePublishRailPanel } from '../navigation/navRail';
 import { usePins } from '../navigation/pinned';
+import { memoLatest } from '../utils/memoLatest';
 import { toggleFavorite, useFavorites } from '../navigation/favorites';
 import ExplorerPanel from '../components/desktop/ExplorerPanel';
 import { formatAddedOn } from '../utils/documentPreview';
@@ -4474,7 +4475,9 @@ const START_KINDS: ('document' | 'board')[] = ['document', 'board'];
 
 // ONE ROW OF THE START LIST (features.startList, Craft's Home): an icon or a project's dot, the name, a count and the
 // chevron; a hairline under it from where the text starts, none under a section's last.
-function StartRow({
+// Drawn again only when what it shows changes (utils/memoLatest).
+const StartRow = memoLatest(StartRowView);
+function StartRowView({
   icon,
   iconColor,
   dot,
@@ -4532,7 +4535,9 @@ function StartRow({
 }
 
 // «Думки» as the first of the start list's folders (the user, 2026-10-28): what is not yet sorted, said beside it.
-function ThoughtsRow({ last }: { last: boolean }) {
+// Drawn again only when what it shows changes (utils/memoLatest).
+const ThoughtsRow = memoLatest(ThoughtsRowView);
+function ThoughtsRowView({ last }: { last: boolean }) {
   useRenderCount('ThoughtsRow');
   const S = useSoft();
   const { countOf } = useThoughts(true);
@@ -4542,7 +4547,9 @@ function ThoughtsRow({ last }: { last: boolean }) {
 
 // A section's head on the start list: the name (with its «›») opens the whole list, anywhere else on the row folds the rows under it.
 // Folded, the head says how many it holds.
-function StartHead({ title, folded, count, onOpen, onToggle }: { title: string; folded: boolean; count: number; onOpen: () => void; onToggle: () => void }) {
+// Drawn again only when what it shows changes (utils/memoLatest).
+const StartHead = memoLatest(StartHeadView);
+function StartHeadView({ title, folded, count, onOpen, onToggle }: { title: string; folded: boolean; count: number; onOpen: () => void; onToggle: () => void }) {
   useRenderCount('StartHead');
   const S = useSoft();
   return (
@@ -4583,7 +4590,9 @@ async function holdStartBase(key: string, label: string, fav: { isOn: (key: stri
 
 // «ДУМКИ» AND «ОБРАНЕ» (2026-11-02, the user: «базу можна закріпити в обране і вона буде на рівні з думками»): the few bases in use
 // now stand as rows right under «Думки», in the order they were put there; they stay in «Бази» below as well, which can then fold.
-function StartFavorites({ favorites, onFavorites }: { favorites: number; onFavorites: () => void }) {
+// Drawn again only when what it shows changes (utils/memoLatest).
+const StartFavorites = memoLatest(StartFavoritesView);
+function StartFavoritesView({ favorites, onFavorites }: { favorites: number; onFavorites: () => void }) {
   useRenderCount('StartFavorites');
   const { customDatabases, iconFor } = useDatabaseTiles();
   const desksControl = useContext(DesksControlContext);
@@ -4626,7 +4635,9 @@ const startStyles = StyleSheet.create({
 // «БАЗИ» ON THE START (2026-11-02, the user's: the bases stand on the Start like the folders - a head that goes to all the bases, and
 // every base a row opened straight from here). It was the bases put there by hand («Обрані бази»); now it is every listed base, the
 // built-in ones and the user's own. No counts: each would be a listener of its own on the Start.
-function StartBases({ folded, onToggle }: { folded: boolean; onToggle: () => void }) {
+// Drawn again only when what it shows changes (utils/memoLatest).
+const StartBases = memoLatest(StartBasesView);
+function StartBasesView({ folded, onToggle }: { folded: boolean; onToggle: () => void }) {
   useRenderCount('StartBases');
   const { customDatabases, iconFor } = useDatabaseTiles();
   const desksControl = useContext(DesksControlContext);
