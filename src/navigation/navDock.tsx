@@ -504,13 +504,35 @@ function withClaim<T>(
   return [...claims.filter((claim) => claim.id !== id), { id, value, layer }];
 }
 
+// THE DOCK HEARS A FRAME AT A TIME (2026-11-16, the optimisation pass, measured: one way into a base drew the dock and the
+// top bar three or four times over, ~10 ms each - the screen going and the screen coming publish their beads, actions,
+// bar and back in separate waves, and each wave was a render of everything under this provider). What is published is
+// gathered and handed over once, at the next frame: the dock changes a frame later and in one go.
+function useFramed<A>(set: (next: A) => void): (next: A) => void {
+  return useCallback((next: A) => frameQueue(() => set(next)), [set]);
+}
+let frameJobs: (() => void)[] = [];
+let frameAsked = false;
+function frameQueue(job: () => void) {
+  frameJobs.push(job);
+  if (frameAsked) return;
+  frameAsked = true;
+  requestAnimationFrame(() => {
+    frameAsked = false;
+    const jobs = frameJobs;
+    frameJobs = [];
+    jobs.forEach((j) => j());
+  });
+}
+
 export function NavDockProvider({ children }: { children: ReactNode }) {
   const [context, setContext] = useState<DockContext | null>(null);
+  const setContextFramed = useFramed(setContext);
   const publish = useCallback((next: DockContext | null) => {
     // Same context, same dock. A screen publishes from an effect that
     // runs on every render, and a fresh object each time would redraw the
     // dock with it.
-    setContext((prev) => {
+    setContextFramed((prev) => {
       if (prev === next) return prev;
       if (!prev || !next || prev.kind !== next.kind) return next;
       if (prev.kind === 'path' && next.kind === 'path') {
@@ -535,16 +557,18 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
   // function, and useState cannot tell a function it is meant to STORE
   // from a function it is meant to CALL as an updater.
   const [targetBox, setTargetBox] = useState<{ fn: DockTargets | null }>({ fn: null });
+  const setTargetBoxFramed = useFramed(setTargetBox);
   const targets = targetBox.fn;
   // The same value never becomes a new render: this provider sits above
   // the entire app, so a needless setState here costs a pass over
   // everything - and a publisher handing over a fresh function each time
   // would loop, which is exactly what happened.
   const publishTargets = useCallback(
-    (next: DockTargets | null) => setTargetBox((prev) => (prev.fn === next ? prev : { fn: next })),
+    (next: DockTargets | null) => setTargetBoxFramed((prev) => (prev.fn === next ? prev : { fn: next })),
     []
   );
   const [topNavClaims, setTopNavClaims] = useState(0);
+  const setTopNavClaimsFramed = useFramed(setTopNavClaims);
   const topNavUp = topNavClaims > 0;
   // Let go a beat LATE. Opening a note from the documents list, the
   // list's bar goes before the note's arrives - one frame, maybe two, of
@@ -554,9 +578,9 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
   // with no gap; leaving for a screen with no bar is a quarter-second
   // later than it would be, which nothing on screen waits for.
   const claimTopNav = useCallback(() => {
-    setTopNavClaims((n) => n + 1);
+    setTopNavClaimsFramed((n) => n + 1);
     return () => {
-      setTimeout(() => setTopNavClaims((n) => n - 1), TOP_NAV_RELEASE_MS);
+      setTimeout(() => setTopNavClaimsFramed((n) => n - 1), TOP_NAV_RELEASE_MS);
     };
   }, []);
   const drawerProgressLeft = useSharedValue(0);
@@ -573,31 +597,36 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
   // desks publishes its own bar without wiping the desk's, which comes
   // back the moment the drawer closes.
   const [topExtrasClaims, setTopExtrasClaims] = useState<Claim<TopExtras>[]>([]);
+  const setTopExtrasClaimsFramed = useFramed(setTopExtrasClaims);
   const publishTopExtras = useCallback((id: string, next: TopExtras | null, layer = 0) => {
-    setTopExtrasClaims((prev) => withClaim(prev, id, next, (a, b) => a === b, layer));
+    setTopExtrasClaimsFramed((prev) => withClaim(prev, id, next, (a, b) => a === b, layer));
   }, []);
   const topExtras = useMemo(() => topClaim(topExtrasClaims), [topExtrasClaims]);
   const [topSearchClaims, setTopSearchClaims] = useState<Claim<TopSearch>[]>([]);
+  const setTopSearchClaimsFramed = useFramed(setTopSearchClaims);
   const publishTopSearch = useCallback((id: string, next: TopSearch | null, layer = 0) => {
-    setTopSearchClaims((prev) => withClaim(prev, id, next, (a, b) => a.placeholder === b.placeholder, layer));
+    setTopSearchClaimsFramed((prev) => withClaim(prev, id, next, (a, b) => a.placeholder === b.placeholder, layer));
   }, []);
   const topSearch = useMemo(() => topClaim(topSearchClaims), [topSearchClaims]);
   const [chromeStyleClaims, setChromeStyleClaims] = useState<Claim<ChromeStyle>[]>([]);
+  const setChromeStyleClaimsFramed = useFramed(setChromeStyleClaims);
   const publishChromeStyle = useCallback((id: string, next: ChromeStyle | null, layer = 0) => {
-    setChromeStyleClaims((prev) => withClaim(prev, id, next, (a, b) => a === b, layer));
+    setChromeStyleClaimsFramed((prev) => withClaim(prev, id, next, (a, b) => a === b, layer));
   }, []);
   const chromeStyle = useMemo(() => topClaim(chromeStyleClaims), [chromeStyleClaims]);
   const [topBackClaims, setTopBackClaims] = useState<Claim<TopBack>[]>([]);
+  const setTopBackClaimsFramed = useFramed(setTopBackClaims);
   const publishTopBack = useCallback((id: string, next: TopBack | null, layer = 0) => {
-    setTopBackClaims((prev) =>
+    setTopBackClaimsFramed((prev) =>
       withClaim(prev, id, next, (a, b) => a.onPress === b.onPress && a.dimmed === b.dimmed && a.icon === b.icon, layer)
     );
   }, []);
   const topBack = useMemo(() => topClaim(topBackClaims), [topBackClaims]);
   const [leaveBox, setLeaveBox] = useState<{ value: DockLeave | null }>({ value: null });
+  const setLeaveBoxFramed = useFramed(setLeaveBox);
   const leave = leaveBox.value;
   const publishLeave = useCallback((next: DockLeave | null) => {
-    setLeaveBox((prev) => {
+    setLeaveBoxFramed((prev) => {
       const a = prev.value;
       if (a === next) return prev;
       if (a && next && a.icon === next.icon && a.onLeave === next.onLeave) return prev;
@@ -609,8 +638,9 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
   // that the signature already accounts for (an icon that changes with
   // the view mode, an `active` that changes with select mode).
   const [actionClaims, setActionClaims] = useState<Claim<DockAction[]>[]>([]);
+  const setActionClaimsFramed = useFramed(setActionClaims);
   const publishActions = useCallback((id: string, next: DockAction[] | null, layer = 0) => {
-    setActionClaims((prev) =>
+    setActionClaimsFramed((prev) =>
       withClaim(
         prev,
         id,
@@ -624,9 +654,10 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
   const [beadClaims, setBeadClaims] = useState<Claim<{ left: DockBead | null; right: DockBead | null }>[]>(
     []
   );
+  const setBeadClaimsFramed = useFramed(setBeadClaims);
   const publishBeads = useCallback(
     (id: string, next: { left: DockBead | null; right: DockBead | null } | null, layer = 0) => {
-      setBeadClaims((prev) =>
+      setBeadClaimsFramed((prev) =>
         withClaim(
           prev,
           id,
@@ -640,8 +671,9 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
   );
   const beads = useMemo(() => topClaim(beadClaims) ?? { left: null, right: null }, [beadClaims]);
   const [base, setBase] = useState<DockContext | null>(null);
+  const setBaseFramed = useFramed(setBase);
   const publishBase = useCallback((next: DockContext | null) => {
-    setBase((prev) => {
+    setBaseFramed((prev) => {
       if (prev === next) return prev;
       if (!prev || !next || prev.kind !== 'desks' || next.kind !== 'desks') return next;
       const same =
