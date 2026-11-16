@@ -30,8 +30,11 @@
     "--key-edge": "rgba(0, 0, 0, 0.0)"
   },
   "window": {
-    "background": "var(--background)",
+    "background": "transparent",
     "foreground": "var(--on-background)"
+  },
+  "eva-ground": {
+    "background": "var(--background)"
   },
   "key": {
     "background": "var(--surface)",

@@ -37,7 +37,7 @@ import androidx.compose.ui.unit.dp
 import dev.patrickgold.florisboard.R
 import dev.patrickgold.florisboard.app.LocalNavController
 import dev.patrickgold.florisboard.app.Routes
-import dev.patrickgold.florisboard.ime.eva.devupdate.EvaBlurCard
+import dev.patrickgold.florisboard.ime.eva.devupdate.EvaOpacityCard
 import dev.patrickgold.florisboard.ime.eva.devupdate.EvaFullKeyboardCard
 import dev.patrickgold.florisboard.ime.eva.devupdate.EvaDynamicThemeCard
 import dev.patrickgold.florisboard.ime.eva.devupdate.EvaLinkPreviewsCard
@@ -85,7 +85,7 @@ fun HomeScreen() = FlorisScreen {
         EvaDevUpdateCard(modifier = Modifier.padding(8.dp))
         EvaFullKeyboardCard(modifier = Modifier.padding(8.dp))
         EvaDynamicThemeCard(modifier = Modifier.padding(8.dp))
-        EvaBlurCard(modifier = Modifier.padding(8.dp))
+        EvaOpacityCard(modifier = Modifier.padding(8.dp))
         EvaScreenshotsCard(modifier = Modifier.padding(8.dp))
         dev.patrickgold.florisboard.ime.eva.macsync.EvaMacSyncCard(modifier = Modifier.padding(8.dp))
         EvaLinkPreviewsCard(modifier = Modifier.padding(8.dp))

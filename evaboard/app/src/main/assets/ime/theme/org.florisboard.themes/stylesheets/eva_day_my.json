@@ -32,8 +32,11 @@
     "--enter-pressed": "dynamic-light-color(secondaryContainer)"
   },
   "window": {
-    "background": "var(--background)",
+    "background": "transparent",
     "foreground": "var(--on-background)"
+  },
+  "eva-ground": {
+    "background": "var(--background)"
   },
   "key": {
     "background": "var(--surface)",

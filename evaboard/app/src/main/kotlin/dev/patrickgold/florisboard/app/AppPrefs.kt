@@ -491,6 +491,19 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
         // false = switch keyboard, true = microphone. Swapped by holding the button.
         // evaBoard: see-through keyboard ground (the theme's translucent window colour, nothing solid
         // under it), with Android's blur behind it where the phone allows cross-window blur.
+        // evaBoard: the keyboard ground's opacity (1 = solid as before, 0 = the app fully shows through)
+        // and a veil that tints the ground toward the theme's extreme (white in a light theme, black in
+        // a dark one). They replaced the old evaBlur on/off switch (2026-11-16); evaBlur the pref stays
+        // only so old stores do not break - nothing reads it any more. System blur is requested whenever
+        // opacity < 1 and the device allows it.
+        val evaOpacity = float(
+            key = "keyboard__eva_opacity",
+            default = 1.0f,
+        )
+        val evaVeil = float(
+            key = "keyboard__eva_veil",
+            default = 0.0f,
+        )
         val evaBlur = boolean(
             key = "keyboard__eva_blur",
             default = false,

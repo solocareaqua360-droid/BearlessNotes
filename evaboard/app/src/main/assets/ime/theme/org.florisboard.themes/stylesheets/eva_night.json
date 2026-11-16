@@ -5,7 +5,7 @@
     "--primary-variant": "#0062CC",
     "--secondary": "#0A84FF",
     "--secondary-variant": "#0062CC",
-    "--background": "rgba(0, 0, 0, 0.85)",
+    "--background": "#000000",
     "--background-variant": "#1C1C1E",
     "--surface": "#3A3A3C",
     "--surface-variant": "#4E4E51",
@@ -30,8 +30,11 @@
     "--key-edge": "rgba(0, 0, 0, 0.0)"
   },
   "window": {
-    "background": "var(--background)",
+    "background": "transparent",
     "foreground": "var(--on-background)"
+  },
+  "eva-ground": {
+    "background": "var(--background)"
   },
   "key": {
     "background": "var(--surface)",

@@ -83,7 +83,9 @@ import androidx.compose.ui.unit.max
 import dev.patrickgold.florisboard.ime.eva.EvaBlur
 import dev.patrickgold.florisboard.ime.eva.EvaStrip
 import dev.patrickgold.florisboard.ime.eva.evaGlass
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.foundation.isSystemInDarkTheme
 import dev.patrickgold.florisboard.ime.eva.EvaNavStripLayer
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.isSpecified
@@ -329,7 +331,7 @@ class FlorisImeService : LifecycleInputMethodService() {
         val w = window.window ?: return
         val windowHeight = inputWindowView?.height ?: 0
         val top = (windowHeight - inputViewSize.height).coerceAtLeast(0)
-        if (EvaBlur.enabled.value && prefs.keyboard.evaBlur.get() && inputViewSize.height > 0) {
+        if (EvaBlur.enabled.value && prefs.keyboard.evaOpacity.get() < 1f && inputViewSize.height > 0) {
             // Almost transparent: the drawable only shapes the blur region, the theme paints the colour.
             val backdrop = android.graphics.drawable.InsetDrawable(
                 android.graphics.drawable.ColorDrawable(0x01000000), 0, top, 0, 0,
@@ -726,28 +728,38 @@ class FlorisImeService : LifecycleInputMethodService() {
         LaunchedEffect(layoutDirection) {
             keyboardManager.activeState.layoutDirection = layoutDirection
         }
-        // evaBoard: the theme's ground is translucent for the blur behind the keyboard; while Android
-        // is not blurring, the same colour is painted solid underneath so the app does not show through.
+        // evaBoard: the keyboard ground is painted here, not by the theme (whose window background is now
+        // transparent), so one slider can set its opacity across any theme - Material You included. The
+        // ground colour comes from the theme's own "eva-ground" element; a veil slider then tints it
+        // toward the theme's extreme (white in a light theme, black in a dark one). Replaced the old
+        // on/off "Прозора підкладка" switch, 2026-11-16.
         val blurAvailable by EvaBlur.enabled.collectAsState()
-        // The switch means "see-through ground"; blur behind is added only where Android allows it.
-        val seeThrough by prefs.keyboard.evaBlur.observeAsState()
+        val opacity by prefs.keyboard.evaOpacity.observeAsState()
+        val veil by prefs.keyboard.evaVeil.observeAsState()
+        val seeThrough = opacity < 1f
         val blurOn = blurAvailable && seeThrough
         LaunchedEffect(inputViewSize, blurOn) { updateEvaBlur() }
-        val windowStyle = rememberSnyggThemeQuery(FlorisImeUi.Window.elementName, attributes)
-        val solidGround = windowStyle.background().takeIf { it.isSpecified }?.copy(alpha = 1f)
+        val groundStyle = rememberSnyggThemeQuery("eva-ground", attributes)
+        val base = groundStyle.background().takeIf { it.isSpecified }?.copy(alpha = 1f)
+            ?: if (isSystemInDarkTheme()) Color.Black else Color(0xFFE8E8E8)
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-            val dark = (solidGround?.luminance() ?: 1f) < 0.5f
+            val dark = base.luminance() < 0.5f
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .wrapContentHeight()
-                    // evaBoard: the see-through ground is glass - rounded top corners and a faint rim
-                    // (the full keyboard keeps a straight top edge: rounded corners, the screen's 38dp and
-                    // then 16dp, looked bad on the live screen - the user, 2026-11-13)
+                    // evaBoard: a see-through ground is glass - rounded top corners and a faint rim; a
+                    // solid ground (opacity 1) keeps a straight top edge (rounded corners looked bad on
+                    // the live screen - the user, 2026-11-13)
                     .then(if (seeThrough) Modifier.evaGlass(dark) else Modifier),
             ) {
-            if (!seeThrough && solidGround != null) {
-                Box(modifier = Modifier.matchParentSize().background(solidGround))
+            // The ground at the chosen opacity, then the veil on top of it (both behind the keys).
+            if (opacity > 0f) {
+                Box(modifier = Modifier.matchParentSize().background(base.copy(alpha = opacity)))
+            }
+            if (veil > 0f) {
+                val veilColor = (if (dark) Color.Black else Color.White).copy(alpha = veil)
+                Box(modifier = Modifier.matchParentSize().background(veilColor))
             }
             SnyggBox(
                 elementName = FlorisImeUi.Window.elementName,

@@ -18,7 +18,20 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Slider
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -42,7 +55,6 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import dev.patrickgold.florisboard.BuildConfig
 import dev.patrickgold.florisboard.app.FlorisPreferenceStore
-import dev.patrickgold.florisboard.ime.eva.EvaBlur
 import dev.patrickgold.florisboard.ime.eva.EvaScreenshots
 import dev.patrickgold.florisboard.ime.theme.extCoreTheme
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -209,30 +221,106 @@ fun EvaFullKeyboardCard(modifier: Modifier = Modifier) {
     }
 }
 
-/** evaBoard: the see-through ground switch, saying whether Android will also blur behind it. */
+/**
+ * evaBoard: the keyboard's opacity and veil. Two sliders over a live mini-keyboard so you see the
+ * effect as you drag: opacity is how much of the app shows through the ground, the veil tints the
+ * ground toward the theme's extreme (white in a light theme, black in a dark one). Replaced the old
+ * on/off "Прозора підкладка" switch, 2026-11-16; Material You keeps working under both sliders.
+ */
 @Composable
-fun EvaBlurCard(modifier: Modifier = Modifier) {
+fun EvaOpacityCard(modifier: Modifier = Modifier) {
     val prefs by FlorisPreferenceStore
     val scope = rememberCoroutineScope()
-    val wanted by prefs.keyboard.evaBlur.observeAsState()
-    val available by EvaBlur.enabled.collectAsState()
+    val opacity by prefs.keyboard.evaOpacity.observeAsState()
+    val veil by prefs.keyboard.evaVeil.observeAsState()
     Card(modifier = modifier) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = "Прозора підкладка", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    text = if (available) {
-                        "Крізь клавіатуру видно застосунок, розмито"
-                    } else {
-                        "Крізь клавіатуру видно застосунок (розмиття Android тут не дозволяє)"
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(text = "Прозорість", style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = "Наскільки видно застосунок за клавіатурою, і молочна/темна вуаль поверх",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            KeyboardOpacityPreview(opacity = opacity, veil = veil)
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(text = "Непрозорість", style = MaterialTheme.typography.bodySmall)
+            Slider(
+                value = opacity,
+                onValueChange = { v -> scope.launch { prefs.keyboard.evaOpacity.set(v) } },
+                valueRange = 0f..1f,
+            )
+            Text(text = "Вуаль", style = MaterialTheme.typography.bodySmall)
+            Slider(
+                value = veil,
+                onValueChange = { v -> scope.launch { prefs.keyboard.evaVeil.set(v) } },
+                valueRange = 0f..1f,
+            )
+        }
+    }
+}
+
+/** A small stand-in keyboard over a sample picture, painted the way the real ground is painted. */
+@Composable
+private fun KeyboardOpacityPreview(opacity: Float, veil: Float) {
+    val dark = isSystemInDarkTheme()
+    val ground = if (dark) Color(0xFF1C1C1E) else Color(0xFFE8E8E8)
+    val keyColor = if (dark) Color(0xFF3A3A3C) else Color(0xFFFFFFFF)
+    val keyText = if (dark) Color(0xFFBBBBBB) else Color(0xFF888888)
+    val veilColor = (if (ground.luminance() < 0.5f) Color.Black else Color.White).copy(alpha = veil)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(150.dp)
+            .clip(RoundedCornerShape(14.dp))
+            // the "photo" behind the keyboard - a stand-in, any picture would do
+            .background(
+                Brush.linearGradient(
+                    listOf(Color(0xFF5B7CB3), Color(0xFF9C6FB0), Color(0xFFD98C6A)),
                 )
+            ),
+    ) {
+        // the keyboard sits at the bottom, like in real life
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(96.dp)
+                .align(Alignment.BottomCenter),
+        ) {
+            // ground at the chosen opacity, then the veil over it
+            Box(modifier = Modifier.matchParentSize().background(ground.copy(alpha = opacity)))
+            if (veil > 0f) Box(modifier = Modifier.matchParentSize().background(veilColor))
+            // three rows of little keys, always solid (only the ground goes see-through)
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
+            ) {
+                repeat(3) { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(20.dp),
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(5.dp),
+                    ) {
+                        val n = if (row == 2) 6 else 9
+                        repeat(n) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(keyColor),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(width = 6.dp, height = 2.dp)
+                                        .background(keyText),
+                                )
+                            }
+                        }
+                    }
+                }
             }
-            Switch(checked = wanted, onCheckedChange = { scope.launch { prefs.keyboard.evaBlur.set(it) } })
         }
     }
 }
