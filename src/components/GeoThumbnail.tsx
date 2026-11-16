@@ -33,6 +33,32 @@ function fileOf(key: string): string | null {
   return `${DIR}g${(h >>> 0).toString(36)}_${key.length}.png`;
 }
 
+// A FEW AT A TIME, AND ONLY WHAT IS STILL ON SCREEN (2026-11-16, before ~1600 points come in from a table): every card
+// asked the map for its picture the moment it was built - a hundred at once was a stutter, 1600 would choke the phone
+// and ask OpenStreetMap's tiles in bulk, which its rules forbid. Now three are drawn at once, the rest wait their turn,
+// and one whose card has scrolled away (or closed) before its turn is not drawn at all - it is asked again when it is
+// back. A kept file needs no turn.
+const MAX_DRAWS = 3;
+let drawing = 0;
+const waitingTurn: (() => void)[] = [];
+const wanted = new Map<string, number>();
+function turn(): Promise<() => void> {
+  return new Promise((resolve) => {
+    const go = () => {
+      drawing += 1;
+      let done = false;
+      resolve(() => {
+        if (done) return;
+        done = true;
+        drawing -= 1;
+        waitingTurn.shift()?.();
+      });
+    };
+    if (drawing < MAX_DRAWS) go();
+    else waitingTurn.push(go);
+  });
+}
+
 // The kept file if there is one; otherwise drawn from the map and kept.
 async function pictureFor(key: string, draw: () => Promise<string>): Promise<string> {
   const file = fileOf(key);
@@ -40,7 +66,14 @@ async function pictureFor(key: string, draw: () => Promise<string>): Promise<str
     const info = await LegacyFileSystem.getInfoAsync(file).catch(() => null);
     if (info?.exists) return file;
   }
-  const tmp = await draw();
+  const release = await turn();
+  let tmp: string;
+  try {
+    if (!(wanted.get(key) ?? 0)) throw new Error('scrolled away');
+    tmp = await draw();
+  } finally {
+    release();
+  }
   if (!file || !DIR) return tmp;
   try {
     dirReady ??= LegacyFileSystem.makeDirectoryAsync(DIR, { intermediates: true }).catch(() => {});
@@ -73,9 +106,16 @@ export default function GeoThumbnail({
 
   useEffect(() => {
     if (uri) return;
+    wanted.set(key, (wanted.get(key) ?? 0) + 1);
+    const unwant = () => {
+      const n = (wanted.get(key) ?? 1) - 1;
+      if (n > 0) wanted.set(key, n);
+      else wanted.delete(key);
+    };
     let cancelled = false;
     const cached = cache.get(key);
     if (cached) {
+      unwant();
       setUri(cached);
       return;
     }
@@ -105,6 +145,7 @@ export default function GeoThumbnail({
       .finally(() => inFlight.delete(key));
     return () => {
       cancelled = true;
+      unwant();
     };
   }, [key, lat, lng, width, height, zoom, uri]);
 

@@ -1,7 +1,7 @@
 import { useFolderArrival } from '../navigation/folderArrival';
 import MenuLabel from '../components/MenuLabel';
 import { SwipeSelectItem } from '../components/SwipeSelect';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTileOpened } from '../navigation/recentPlaces';
 import { useFolderHold } from '../components/FolderHoldMenu';
 import BinRestoreRows from '../components/BinRestoreRows';
@@ -21,6 +21,7 @@ import { useDockClearance } from '../navigation/dockGeometry';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
+  FlatList,
   Image,
   Linking,
   Modal,
@@ -35,6 +36,7 @@ import { FolderRowItem } from '../components/FolderItemCard';
 import type { FolderItem } from '../hooks/useAllFolderItems';
 import { viewSection } from '../navigation/topMenu';
 import { favoriteMenuRow } from '../navigation/favorites';
+import { stressPoints, useGeoStress } from '../utils/geoStress';
 import type { MenuEntry } from '../components/surfaces/Menu';
 import { useSoft } from '../theme/soft';
 import { GestureDetector } from 'react-native-gesture-handler';
@@ -369,7 +371,10 @@ export default function LinksScreen({
   const [showRecordLinks, setShowRecordLinks] = useState(false);
   const technicalDocIds = useTechnicalDocIds();
   const isTechnical = (link: LinkItem) => isTechnicalItem(link.id, link.documentIds, recordLinkIds, technicalDocIds);
-  const allCategoryLinks = links.filter((link) => categoryOf(link) === category);
+  // The stress test's made-up points (utils/geoStress) - the geo base only, in memory only.
+  const stress = useGeoStress();
+  const stressed = useMemo(() => (stress > 0 && category === 'geo' ? stressPoints(stress) : []), [stress, category]);
+  const allCategoryLinks = [...links, ...(stressed as LinkItem[])].filter((link) => categoryOf(link) === category);
   const recordLinkCount = allCategoryLinks.filter(isTechnical).length;
   const categoryLinks = showRecordLinks ? allCategoryLinks : allCategoryLinks.filter((link) => !isTechnical(link));
   const list = useDatabaseList<LinkItem>({
@@ -1872,69 +1877,73 @@ export default function LinksScreen({
           )}
           </View>
         ) : viewMode === 'rows' && !trashOpen ? (
+          // EVERY LIST HERE DRAWS ONLY WHAT IS ON SCREEN (2026-11-16, before ~1600 geo points come in from a table): a
+          // ScrollView built every card at once - fine for a hundred, seconds and a phone's worth of memory for 1600, and
+          // each geo card asks the map for its picture as it is built. FlatList builds what is near the screen.
           <GestureDetector gesture={carrying.listGesture}>
-          <ScrollView
-            ref={carrying.scrollRef as React.RefObject<ScrollView>}
+          <FlatList
+            ref={carrying.scrollRef as never}
             {...listProps}
+            {...LAZY}
+            data={linksHere}
+            keyExtractor={(item) => item.id}
             contentContainerStyle={[
               styles.list,
               styles.lines,
               railClear(inPane ? 'left' : 'right', 20),
               { paddingTop: listTopPad, paddingBottom: dockClear + insets.bottom },
               ]}
-          >
-            {explorerOrTrashHead()}
-            {linksHere.map((item) => renderLinkLine(item))}
-            <GroupSections groupId={list.selectedGroupId} currentKind={tagKind} tags={tags} />
-          </ScrollView>
+            ListHeaderComponent={explorerOrTrashHead()}
+            renderItem={({ item }) => renderLinkLine(item)}
+            ListFooterComponent={<GroupSections groupId={list.selectedGroupId} currentKind={tagKind} tags={tags} />}
+          />
           </GestureDetector>
         ) : viewMode === 'grid' ? (
           <GestureDetector gesture={carrying.listGesture}>
-          <ScrollView
-            ref={carrying.scrollRef as React.RefObject<ScrollView>}
+          <FlatList
+            ref={carrying.scrollRef as never}
             {...listProps}
+            {...LAZY}
+            // A row of the grid is one item: two cards (three where the column is wide), the last row made up with
+            // invisible fillers so a lone card keeps its siblings' size - "остання картка чомусь завжди велика".
+            data={chunked(trashOpen ? trashedLinks : linksHere, listWidth >= 640 ? 3 : 2)}
+            keyExtractor={(row) => row[0].id}
             contentContainerStyle={[
               styles.gridPage,
               railClear(inPane ? 'left' : 'right', 20),
               { paddingTop: listTopPad, paddingBottom: dockClear + insets.bottom },
               ]}
-          >
-            {explorerOrTrashHead(listWidth >= 640 ? 3 : 2)}
-            <View style={styles.gridRows}>
-              {(trashOpen ? trashedLinks : linksHere).map((item) =>
-                trashOpen
-                  ? renderLinkTrashGridCell(item, listWidth >= 640 ? 3 : 2)
-                  : renderLinkGridCell(item, listWidth >= 640 ? 3 : 2)
-              )}
-              {/* A lone card alone in the last row shares flexGrow with
-                  nothing, so IT absorbs the whole row's leftover width by
-                  itself instead of staying the size its siblings are -
-                  "остання картка чомусь завжди велика". These fill the
-                  row invisibly, the same flexBasis/flexGrow a real card
-                  carries, so a lone trailing card always has something
-                  to split the row with. */}
-              {Array.from({
-                length: gridFillerCount((trashOpen ? trashedLinks : linksHere).length, listWidth >= 640 ? 3 : 2),
-              }).map((_, i) => (
-                <View key={`filler-${i}`} style={{ flexBasis: gridBasis(listWidth >= 640 ? 3 : 2), flexGrow: 1 }} />
-              ))}
-            </View>
-            {!trashOpen && <GroupSections groupId={list.selectedGroupId} currentKind={tagKind} tags={tags} />}
-          </ScrollView>
+            ListHeaderComponent={explorerOrTrashHead(listWidth >= 640 ? 3 : 2)}
+            renderItem={({ item: row }) => (
+              <View style={[styles.gridRows, styles.gridLine]}>
+                {row.map((item) =>
+                  trashOpen
+                    ? renderLinkTrashGridCell(item, listWidth >= 640 ? 3 : 2)
+                    : renderLinkGridCell(item, listWidth >= 640 ? 3 : 2)
+                )}
+                {Array.from({ length: gridFillerCount(row.length, listWidth >= 640 ? 3 : 2) }).map((_, i) => (
+                  <View key={`filler-${i}`} style={{ flexBasis: gridBasis(listWidth >= 640 ? 3 : 2), flexGrow: 1 }} />
+                ))}
+              </View>
+            )}
+            ListFooterComponent={!trashOpen ? <GroupSections groupId={list.selectedGroupId} currentKind={tagKind} tags={tags} /> : null}
+          />
           </GestureDetector>
         ) : (
           <GestureDetector gesture={carrying.listGesture}>
-          <ScrollView
-            ref={carrying.scrollRef as React.RefObject<ScrollView>}
+          <FlatList
+            ref={carrying.scrollRef as never}
             {...listProps}
+            {...LAZY}
+            data={trashOpen ? trashedLinks : linksHere}
+            keyExtractor={(item) => item.id}
             contentContainerStyle={[
               styles.list,
               railClear(inPane ? 'left' : 'right', 20),
               { paddingTop: listTopPad, paddingBottom: dockClear + insets.bottom },
               ]}
-          >
-            {explorerOrTrashHead()}
-            {(trashOpen ? trashedLinks : linksHere).map((item) =>
+            ListHeaderComponent={explorerOrTrashHead()}
+            renderItem={({ item }) =>
               trashOpen ? (
                 renderLinkTrashRow(item)
               ) : (
@@ -1942,16 +1951,24 @@ export default function LinksScreen({
                   {renderLinkRow(item)}
                 </SwipeSelectItem>
               )
-            )}
-            {/* What else is in this group - see GroupSections. */}
-            {!trashOpen && <GroupSections groupId={list.selectedGroupId} currentKind={tagKind} tags={tags} />}
-          </ScrollView>
+            }
+            // What else is in this group - see GroupSections.
+            ListFooterComponent={!trashOpen ? <GroupSections groupId={list.selectedGroupId} currentKind={tagKind} tags={tags} /> : null}
+          />
           </GestureDetector>
         )
         );
       }}
     </DatabaseChrome>
   );
+}
+
+// What a long list builds at a time: about two screens' worth around what is shown.
+const LAZY = { initialNumToRender: 8, maxToRenderPerBatch: 8, windowSize: 7, updateCellsBatchingPeriod: 40 } as const;
+function chunked<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
 }
 
 const makeStyles = (t: Theme) =>
@@ -2039,6 +2056,8 @@ const makeStyles = (t: Theme) =>
   gridPage: {
     paddingVertical: 8,
   },
+  // One row of the grid as a list item: the gap the wrapped grid had between its rows.
+  gridLine: { marginBottom: 12 },
   gridRows: {
     flexDirection: 'row',
     flexWrap: 'wrap',
