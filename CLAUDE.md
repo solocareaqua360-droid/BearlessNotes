@@ -346,6 +346,19 @@ APK (Stage 10 in `DEVELOPMENT_PLAN.md`) is built via `eas build
 from then on, `npm start` opens straight into that custom client
 instead of Expo Go.
 
+## Speed is a feature (2026-11-16, the user's: «застосунок, який не гальмує»)
+
+Before handing over any new screen, list, window or dock change, measure it on the phone and fix what it costs:
+- Turn the trace on: `adb shell am start -a android.intent.action.VIEW -d "mindeva://perf?on=1" com.bearlessnotes.notes`, then
+  `adb logcat -s ReactNativeJS` shows `[perf]` stalls over 50 ms and renders over 8 ms (utils/perfWatch); frame stats via
+  `adb shell dumpsys gfxinfo com.bearlessnotes.notes` (reset before, read after). From a tap to the first frame: under ~50 ms of
+  JS-thread stall. If it does not fit, it is not finished.
+- The three habits that cost most here: a window kept mounted while closed (use `utils/closedCostsNothing` / GlassLayer's gate),
+  a list row or start row that redraws for nothing (`utils/memoLatest`, `memo`), and building cards while a screen still slides in
+  (`hooks/useSlideSettled`). Icons are a FONT (assets/fonts/lucide.ttf, `lucideGlyphs.ts`); never draw an icon as a new SVG.
+- Lists draw only what is on screen (FlatList), never a ScrollView of everything.
+- Temporary counters/checkpoints are removed once the cause is found; the trace stays. Details: the memory `project_perf_pass_2026_11_16`.
+
 ## Dev board («розробка») - keep it current, without the user importing anything
 
 The user's own base «розробка» (fields: Назва, Тип, Статус, Платформа, Дата, Опис) is THE list of what is done, open, paused and
