@@ -18,9 +18,6 @@ fi
 
 export JAVA_HOME=/opt/homebrew/opt/openjdk@17
 export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
-# This Mac is often on a phone hotspot that has IPv6 only; Gradle then fails with "Network is unreachable"
-# unless Java prefers IPv6 (harmless on a normal network).
-export JAVA_TOOL_OPTIONS="-Djava.net.preferIPv6Addresses=true"
 ./gradlew :app:assembleRelease --console=plain -q
 
 OUT=$(mktemp -d)
