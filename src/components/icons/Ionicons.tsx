@@ -60,7 +60,7 @@ function shapeToD([kind, attrs]: IconElement): string | null {
   const a = attrs as Record<string, string | number>;
   switch (kind) {
     case 'path':
-      return String(a.d);
+      return absoluteStart(String(a.d));
     case 'circle': {
       const cx = n(a.cx), cy = n(a.cy), r = n(a.r);
       return `M${cx - r} ${cy}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`;
@@ -91,6 +91,23 @@ function shapeToD([kind, attrs]: IconElement): string | null {
     default:
       return null;
   }
+}
+// A path that opens with a RELATIVE move («m9 11 3 3…») moves from where the previous shape ended once the shapes are
+// joined, not from the corner - the first move is made absolute, and the pairs after it (relative lines, by the rules)
+// get their own «l».
+const NUM = /^[\s,]*([-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?)/;
+function absoluteStart(d: string): string {
+  const t = d.trimStart();
+  if (t[0] !== 'm') return d;
+  let rest = t.slice(1);
+  const x = NUM.exec(rest);
+  if (!x) return d;
+  rest = rest.slice(x[0].length);
+  const y = NUM.exec(rest);
+  if (!y) return d;
+  rest = rest.slice(y[0].length);
+  const more = NUM.test(rest) && !/^[\s,]*[a-zA-Z]/.test(rest);
+  return `M${x[1]} ${y[1]}${more ? 'l' : ''}${rest}`;
 }
 const joined = new Map<string, string | null>();
 function joinedPath(name: string, elements: IconElement[]): string | null {
