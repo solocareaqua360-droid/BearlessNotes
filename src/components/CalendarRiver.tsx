@@ -1,5 +1,5 @@
 import { useRenderCount } from '../utils/perfWatch';
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { forwardRef, memo, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Keyboard, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { usePullToSearch } from '../hooks/usePullToSearch';
@@ -360,7 +360,9 @@ const CalendarRiver = forwardRef<CalendarRiverHandle, { navigation: unknown }>(f
     </>
   );
 });
-export default CalendarRiver;
+// Drawn again only for its own reasons (its data, its state): the calendar screen re-rendered for every desk switch and
+// took the river with it - 22-25 ms, up to three times a switch (measured 2026-11-16). Its props never change.
+export default memo(CalendarRiver);
 
 // «+» of the dock on the river: a task for today, or today's note.
 export async function riverPlus(open: { note: () => void; task: () => void }) {
