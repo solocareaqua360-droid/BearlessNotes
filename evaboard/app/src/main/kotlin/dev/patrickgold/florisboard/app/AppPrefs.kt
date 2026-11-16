@@ -316,9 +316,11 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
             key = "gestures__space_bar_swipe_right",
             default = SwipeAction.MOVE_CURSOR_RIGHT,
         )
+        // evaBoard: the space bar is for cursor control only - language lives on the globe key, so the
+        // long press no longer opens the keyboard/language picker (the user, 2026-11-16).
         val spaceBarLongPress = enum(
             key = "gestures__space_bar_long_press",
-            default = SwipeAction.SHOW_INPUT_METHOD_PICKER,
+            default = SwipeAction.NO_ACTION,
         )
         val deleteKeySwipeLeft = enum(
             key = "gestures__delete_key_swipe_left",
@@ -453,6 +455,11 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
         )
         val evaThemeApplied = boolean(
             key = "internal__eva_theme_applied",
+            default = false,
+        )
+        // evaBoard: set once the space-bar long press was cleared of the old keyboard/language picker
+        val evaSpaceLongPressCleared = boolean(
+            key = "internal__eva_space_long_press_cleared",
             default = false,
         )
         val homeIsBetaToolboxCollapsed = boolean(

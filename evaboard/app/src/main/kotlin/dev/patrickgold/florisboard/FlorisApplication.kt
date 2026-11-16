@@ -124,6 +124,14 @@ class FlorisApplication : Application() {
                 )
                 prefs.internal.evaTickApplied.set(true)
             }
+            // evaBoard: the space bar is cursor-only; drop the old keyboard/language picker from its
+            // long press once (language stays on the globe key).
+            if (!prefs.internal.evaSpaceLongPressCleared.get()) {
+                if (prefs.gestures.spaceBarLongPress.get() == dev.patrickgold.florisboard.ime.text.gestures.SwipeAction.SHOW_INPUT_METHOD_PICKER) {
+                    prefs.gestures.spaceBarLongPress.set(dev.patrickgold.florisboard.ime.text.gestures.SwipeAction.NO_ACTION)
+                }
+                prefs.internal.evaSpaceLongPressCleared.set(true)
+            }
             preferenceStoreLoaded.value = true
         }
         extensionManager.value.init()

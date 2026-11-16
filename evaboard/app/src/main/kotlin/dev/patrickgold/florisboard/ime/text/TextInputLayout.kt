@@ -16,6 +16,7 @@
 
 package dev.patrickgold.florisboard.ime.text
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,6 +28,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
@@ -35,6 +38,7 @@ import dev.patrickgold.florisboard.R
 import dev.patrickgold.florisboard.app.FlorisPreferenceStore
 import dev.patrickgold.florisboard.ime.smartbar.IncognitoDisplayMode
 import dev.patrickgold.florisboard.ime.smartbar.InlineSuggestionsStyleCache
+import dev.patrickgold.florisboard.ime.eva.EvaSpaceCursor
 import dev.patrickgold.florisboard.ime.eva.EvaTopRowUi
 import dev.patrickgold.florisboard.ime.keyboard.FlorisImeSizing
 import dev.patrickgold.florisboard.ime.smartbar.CandidatesRow
@@ -44,6 +48,7 @@ import dev.patrickgold.florisboard.ime.theme.FlorisImeUi
 import dev.patrickgold.florisboard.keyboardManager
 import dev.patrickgold.jetpref.datastore.model.observeAsState
 import org.florisboard.lib.snygg.ui.SnyggIcon
+import org.florisboard.lib.snygg.ui.rememberSnyggThemeQuery
 
 @Composable
 fun TextInputLayout(
@@ -60,32 +65,47 @@ fun TextInputLayout(
     InlineSuggestionsStyleCache()
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-        Column(
+        Box(
             modifier = modifier
                 .fillMaxWidth()
                 .wrapContentHeight(),
         ) {
-            // evaBoard: its own top row (digits, undo / redo / suggestions, or the tools) replaces
-            // FlorisBoard's Smartbar
-            EvaTopRowUi()
-            if (state.isActionsOverflowVisible) {
-                QuickActionsOverflowPanel()
-            } else {
-                Box {
-                    val incognitoDisplayMode by prefs.keyboard.incognitoDisplayMode.observeAsState()
-                    val showIncognitoIcon = evaluator.state.isIncognitoMode &&
-                        incognitoDisplayMode == IncognitoDisplayMode.DISPLAY_BEHIND_KEYBOARD
-                    if (showIncognitoIcon) {
-                        SnyggIcon(
-                            FlorisImeUi.IncognitoModeIndicator.elementName,
-                            modifier = Modifier
-                                .matchParentSize()
-                                .align(Alignment.Center),
-                            painter = painterResource(R.drawable.ic_incognito),
-                        )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .wrapContentHeight(),
+            ) {
+                // evaBoard: its own top row (digits, undo / redo / suggestions, or the tools) replaces
+                // FlorisBoard's Smartbar
+                EvaTopRowUi()
+                if (state.isActionsOverflowVisible) {
+                    QuickActionsOverflowPanel()
+                } else {
+                    Box {
+                        val incognitoDisplayMode by prefs.keyboard.incognitoDisplayMode.observeAsState()
+                        val showIncognitoIcon = evaluator.state.isIncognitoMode &&
+                            incognitoDisplayMode == IncognitoDisplayMode.DISPLAY_BEHIND_KEYBOARD
+                        if (showIncognitoIcon) {
+                            SnyggIcon(
+                                FlorisImeUi.IncognitoModeIndicator.elementName,
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .align(Alignment.Center),
+                                painter = painterResource(R.drawable.ic_incognito),
+                            )
+                        }
+                        TextKeyboardLayout(evaluator = evaluator)
                     }
-                    TextKeyboardLayout(evaluator = evaluator)
                 }
+            }
+            // evaBoard: while the held space bar steers the caret, the keys give way to a blank surface
+            // (just the ground, no letters) so the whole keyboard reads as a trackpad. The finger already
+            // owns the gesture, so this cover is purely visual and takes no touches of its own.
+            val cursorDragging by EvaSpaceCursor.dragging.collectAsState()
+            if (cursorDragging) {
+                val ground = rememberSnyggThemeQuery("eva-ground").background()
+                    .takeIf { it.isSpecified }?.copy(alpha = 1f) ?: Color(0xFF1C1C1E)
+                Box(modifier = Modifier.matchParentSize().background(ground))
             }
         }
     }

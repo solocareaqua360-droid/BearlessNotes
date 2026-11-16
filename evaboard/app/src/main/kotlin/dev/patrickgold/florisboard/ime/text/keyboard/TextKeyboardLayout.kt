@@ -436,6 +436,10 @@ private fun TextKeyButton(
     }
 }
 
+// evaBoard: the space cursor touchpad buzzes only when the step this gesture event covers is this
+// small or smaller (a slow, precise move); longer steps are a fast sweep and stay silent.
+private const val SPACE_CURSOR_HAPTIC_STEP = 2
+
 @Suppress("unused_parameter")
 private class TextKeyboardLayoutController(
     context: Context,
@@ -696,6 +700,7 @@ private class TextKeyboardLayoutController(
             pointer.hasTriggeredMassSelection = false
             editorInstance.massSelection.end()
         }
+        dev.patrickgold.florisboard.ime.eva.EvaSpaceCursor.dragging.value = false
 
         val initialKey = pointer.initialKey
         val activeKey = pointer.activeKey
@@ -745,6 +750,7 @@ private class TextKeyboardLayoutController(
             pointer.hasTriggeredMassSelection = false
             editorInstance.massSelection.end()
         }
+        dev.patrickgold.florisboard.ime.eva.EvaSpaceCursor.dragging.value = false
 
         val activeKey = pointer.activeKey
         if (activeKey != null) {
@@ -896,10 +902,17 @@ private class TextKeyboardLayoutController(
                     fun step(code: Int, raw: Int, swallowActivation: Boolean) {
                         val count = abs(raw) - if (firstMove && swallowActivation) 1 else 0
                         if (count > 0) {
-                            inputFeedbackController?.gestureMovingSwipe(TextKeyData.SPACE)
+                            // Buzz only while moving slowly (a short step per event) - near the target you
+                            // feel each letter; during a fast sweep the steps are long and stay silent
+                            // (the user's ask, 2026-11-16). SPACE_CURSOR_HAPTIC_STEP is the cutoff.
+                            if (count <= SPACE_CURSOR_HAPTIC_STEP) {
+                                inputFeedbackController?.gestureMovingSwipe(TextKeyData.SPACE)
+                            }
                             if (!pointer.hasTriggeredMassSelection) {
                                 pointer.hasTriggeredMassSelection = true
                                 editorInstance.massSelection.begin()
+                                // Keys give way to a blank touchpad for the length of the drag.
+                                dev.patrickgold.florisboard.ime.eva.EvaSpaceCursor.dragging.value = true
                             }
                             keyboardManager.handleArrow(code, count)
                         }

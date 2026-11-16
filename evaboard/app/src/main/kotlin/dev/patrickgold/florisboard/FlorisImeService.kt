@@ -331,24 +331,36 @@ class FlorisImeService : LifecycleInputMethodService() {
         val w = window.window ?: return
         val windowHeight = inputWindowView?.height ?: 0
         val top = (windowHeight - inputViewSize.height).coerceAtLeast(0)
-        if (prefs.keyboard.evaOpacity.get() < 1f && inputViewSize.height > 0) {
-            // A near-transparent backdrop over the keyboard's own area lets the app behind show through
-            // the ground we paint at less than full opacity; where Android supports cross-window blur it
-            // also blurs what shows through. Without this the IME window stays opaque and the opacity
-            // slider shows nothing at all - the bug on phones with no cross-window blur (Nothing,
-            // Samsung), which the user caught, 2026-11-16. The blur was only ever a bonus on top.
-            val backdrop = android.graphics.drawable.InsetDrawable(
-                android.graphics.drawable.ColorDrawable(0x01000000), 0, top, 0, 0,
-            )
-            w.setBackgroundDrawable(backdrop)
-            w.setBackgroundBlurRadius(if (EvaBlur.enabled.value) (24 * resources.displayMetrics.density).toInt() else 0)
-            evaBlurApplied = true
-        } else if (evaBlurApplied) {
-            // Back to the theme's own background: TRANSPARENT, never null - a window with no
-            // background is painted black, and this one covers the whole screen above the keys.
-            w.setBackgroundBlurRadius(0)
-            w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
-            evaBlurApplied = false
+        val transparent = android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
+        val seeThrough = prefs.keyboard.evaOpacity.get() < 1f
+        when {
+            // See-through, and the phone allows cross-window blur: a near-transparent backdrop inset to
+            // the keyboard's own area, so only what is behind the keys is blurred, not the app above.
+            seeThrough && EvaBlur.enabled.value && inputViewSize.height > 0 -> {
+                val backdrop = android.graphics.drawable.InsetDrawable(
+                    android.graphics.drawable.ColorDrawable(0x01000000), 0, top, 0, 0,
+                )
+                w.setBackgroundDrawable(backdrop)
+                w.setBackgroundBlurRadius((24 * resources.displayMetrics.density).toInt())
+                evaBlurApplied = true
+            }
+            // See-through, no blur (Nothing, Samsung): just make the whole IME window transparent so the
+            // app shows behind it; the ground we paint in Compose does the dimming. A plain transparent
+            // ColorDrawable (never null, never the inset drawable whose top can be mis-measured as the
+            // keyboard opens) - the inset path turned the whole screen black on open, the same black we
+            // fixed in 0.11.2 (the user caught it again, 2026-11-16).
+            seeThrough -> {
+                w.setBackgroundBlurRadius(0)
+                w.setBackgroundDrawable(transparent)
+                evaBlurApplied = true
+            }
+            // Fully opaque again: restore a transparent background (never null - a window with no
+            // background is painted black, and this one covers the whole screen above the keys).
+            evaBlurApplied -> {
+                w.setBackgroundBlurRadius(0)
+                w.setBackgroundDrawable(transparent)
+                evaBlurApplied = false
+            }
         }
     }
 
