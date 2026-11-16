@@ -1,3 +1,4 @@
+import { useRenderCount } from '../utils/perfWatch';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import IconCatalogGrid from './IconCatalogGrid';
 import type { Theme } from '../theme/tokens';
@@ -76,6 +77,7 @@ export default function TagPicker({
   plain = false,
   words = { title: 'Папки', create: 'Створити папку', newTitle: 'Нова папка', nameTitle: 'Назва папки' },
 }: Props) {
+  useRenderCount('TagPicker');
   const b = useBottomSheet(visible, onClose);
   const theme = useTheme();
   const accent = theme.accent;

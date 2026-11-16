@@ -1,3 +1,4 @@
+import { useRenderCount } from '../../utils/perfWatch';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
@@ -96,6 +97,7 @@ export default function Sheet({
   inset?: number;
   children: ReactNode;
 }) {
+  useRenderCount('Sheet');
   const styles = useStyles(makeStyles);
   const theme = useTheme();
   const keyboardHeight = useKeyboardHeight();

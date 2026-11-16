@@ -1,3 +1,4 @@
+import { useRenderCount } from '../utils/perfWatch';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
 import TextInput from './AppTextInput';
@@ -62,6 +63,7 @@ export default function RenamePrompt({
   onCancel,
   onSave,
 }: Props) {
+  useRenderCount('RenamePrompt');
   const b = useBottomSheet(visible, onCancel);
   const theme = useTheme();
   const styles = useStyles(makeStyles);

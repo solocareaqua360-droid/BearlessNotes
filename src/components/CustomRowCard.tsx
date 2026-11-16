@@ -1,3 +1,4 @@
+import { useRenderCount } from '../utils/perfWatch';
 import { lift } from '../utils/lift';
 import { markHeld } from '../utils/heldNode';
 import { ReactNode, memo, useRef } from 'react';
@@ -110,6 +111,7 @@ export default function CustomRowCard({
   right,
   chosen,
 }: Props) {
+  useRenderCount('CustomRowCard');
   const recordColour = useRecordColour();
   // Soft (a soft screen around it says so): the card surface and inks.
   const soft = useSoftSurface();

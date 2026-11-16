@@ -1,3 +1,4 @@
+import { useRenderCount } from '../utils/perfWatch';
 import { MOTION } from '../theme/desktopTheme';
 import { NO_WINDOW_DRAG } from '../utils/windowDrag';
 import { useLeaving } from '../hooks/useLeaving';
@@ -53,6 +54,7 @@ export default function GlassLayer({
   // whitening («розбілення») on the light one.
   softDim?: boolean;
 }) {
+  useRenderCount('GlassLayer');
   // Without this ref expo-blur falls back to a plain translucent view on
   // Android - which is what made the first two attempts look like a dim.
   const blurTarget = useBlurTarget();

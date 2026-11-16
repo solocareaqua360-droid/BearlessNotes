@@ -1,3 +1,4 @@
+import { useRenderCount } from '../utils/perfWatch';
 import { lift } from '../utils/lift';
 import { cardRadius } from '../theme/scale';
 import { useRef, useState, type ReactNode } from 'react';
@@ -70,6 +71,7 @@ export default function ExplorerHead({
   look?: 'list' | 'grid' | 'rows';
   gridColumns?: number;
 }) {
+  useRenderCount('ExplorerHead');
   const theme = useTheme();
   const S = useSoft();
   // Soft (a database's chrome says so - see SoftSurfaceContext): the same
