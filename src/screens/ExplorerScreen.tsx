@@ -1,3 +1,4 @@
+import { useRenderTimer } from '../utils/perfWatch';
 import { hasTextSelection } from '../utils/textSelection';
 import { type ComponentProps, type ReactElement, type ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { applyFolderMerge, planFolderMerge } from '../utils/folderMerge';
@@ -355,6 +356,7 @@ async function readPhotoText(uri: string, driveFileId: string | undefined, start
 }
 
 export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; desk?: boolean } = {}) {
+  useRenderTimer('Explorer');
   const S = useSoft();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();

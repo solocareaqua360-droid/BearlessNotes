@@ -1,3 +1,4 @@
+import { useRenderTimer } from '../utils/perfWatch';
 import { useFolderArrival } from '../navigation/folderArrival';
 import MenuLabel from '../components/MenuLabel';
 import { SwipeSelectItem } from '../components/SwipeSelect';
@@ -208,6 +209,7 @@ export default function LinksScreen({
   category: categoryProp,
   inPane,
 }: Partial<Props> & { category?: 'video' | 'geo' | 'other'; inPane?: boolean }) {
+  useRenderTimer('Links');
   // The three desks stay in the dock inside a base (deskBeadsBus's useDockDesksHere).
   useDockDesksWhileFocused(!inPane);
   // The laptop's folders stand two across, not one under another.

@@ -1,3 +1,4 @@
+import { useRenderTimer } from '../utils/perfWatch';
 import { favoriteMenuRow } from '../navigation/favorites';
 import { useFolderArrival } from '../navigation/folderArrival';
 import MenuLabel from '../components/MenuLabel';
@@ -123,6 +124,7 @@ type FileItem = {
 // since the two versions have nothing else in common.
 
 export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
+  useRenderTimer('Files');
   // The three desks stay in the dock inside a base (deskBeadsBus's useDockDesksHere).
   useDockDesksWhileFocused(!inPane);
   // In front: the start desk's recents.

@@ -1,3 +1,4 @@
+import { useRenderTimer } from '../utils/perfWatch';
 import { ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { FEATURES } from '../features';
 import { SwipeSelectArea, type SwipeScroll } from './SwipeSelect';
@@ -247,6 +248,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   fullWidth = false,
   shown,
 }: DatabaseChromeProps<T>) {
+  useRenderTimer('DbChrome');
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   // EVERY DATABASE IN THE SOFT STYLE (theme/soft) - the user's go-ahead

@@ -1,3 +1,4 @@
+import { useRenderTimer } from '../utils/perfWatch';
 import { favoriteMenuRow } from '../navigation/favorites';
 import { appendToLessonNote, captureVideoFrame, formatStamp, frameBlocks, timecodeBlocks } from '../utils/videoFrames';
 import { SwipeSelectArea, SwipeSelectItem } from '../components/SwipeSelect';
@@ -396,6 +397,7 @@ export default function CustomDatabaseScreen({
   databaseId: databaseIdProp,
   inPane,
 }: Partial<Props> & { databaseId?: string; inPane?: boolean }) {
+  useRenderTimer('CustomDb');
   // Up here with the other hooks - below the early returns it is a hook
   // called conditionally (the white-screen crash).
   const rowMenuPointer = useDensity() === 'pointer';

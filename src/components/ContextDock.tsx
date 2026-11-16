@@ -691,6 +691,7 @@ function useHeldThroughHandover<T>(value: T, full: (v: T) => boolean): T {
 }
 
 export default function ContextDock() {
+  useRenderTimer('ContextDock');
   // Re-render once a held desk dock has run out (see deskDockHold): nothing else would draw it again.
   const [, setDockTick] = useState(0);
   dockForceRender = () => setDockTick((t) => t + 1);

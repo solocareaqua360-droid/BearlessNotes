@@ -1,3 +1,4 @@
+import { useRenderTimer } from '../utils/perfWatch';
 import { useFolderArrival } from '../navigation/folderArrival';
 import MenuLabel from '../components/MenuLabel';
 import { SwipeSelectItem } from '../components/SwipeSelect';
@@ -70,6 +71,7 @@ import { useDockDesksWhileFocused } from '../navigation/deskBeadsBus';
 // the learned ones can be left out of the stack. It is a switch on the
 // deck, not on the database: "як опція для певної групи карток".
 export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) {
+  useRenderTimer('Flashcards');
   // The three desks stay in the dock inside a base (deskBeadsBus's useDockDesksHere).
   useDockDesksWhileFocused(!inPane);
   // In front: the start desk's recents.

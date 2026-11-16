@@ -1,3 +1,4 @@
+import { useRenderTimer } from '../utils/perfWatch';
 import { usePaneBar } from '../navigation/paneBar';
 import { DeskContext } from '../navigation/desks';
 import { useTileOpened } from '../navigation/recentPlaces';
@@ -214,6 +215,7 @@ function kanbanColumnWidthFor(screenWidth: number, narrow = false): number {
 }
 
 export default function TasksScreen() {
+  useRenderTimer('Tasks');
   // The three desks stay in the dock inside a base (deskBeadsBus's useDockDesksHere).
   useDockDesksWhileFocused(true);
   // In front: the start desk's recents.

@@ -1,3 +1,4 @@
+import { useRenderTimer } from '../utils/perfWatch';
 import { ReactElement, ReactNode, useEffect, useRef, useState } from 'react';
 import DockGlassFill, { dockInk, useDockSurface } from './DockGlassFill';
 import { useDockGlass } from '../utils/dockGlass';
@@ -349,6 +350,7 @@ export default function DeskDock({
   // back - not multitasking.
   circleBack?: boolean;
 }) {
+  useRenderTimer('DeskDock');
   // The glass dock, while its switch is on (utils/dockGlass).
   const glassOn = useDockGlass();
   const surface = useDockSurface(soft, glassOn, true);

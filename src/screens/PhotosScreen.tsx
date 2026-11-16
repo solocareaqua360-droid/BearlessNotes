@@ -1,3 +1,4 @@
+import { useRenderTimer } from '../utils/perfWatch';
 import { favoriteMenuRow } from '../navigation/favorites';
 import { useFolderArrival } from '../navigation/folderArrival';
 import MenuLabel from '../components/MenuLabel';
@@ -138,6 +139,7 @@ async function readPhotoText(uri: string, driveFileId: string | undefined, start
 }
 
 export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
+  useRenderTimer('Photos');
   // The three desks stay in the dock inside a base (deskBeadsBus's useDockDesksHere).
   useDockDesksWhileFocused(!inPane);
   // In front: the start desk's recents.

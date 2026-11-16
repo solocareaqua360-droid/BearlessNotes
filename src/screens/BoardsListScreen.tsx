@@ -1,3 +1,4 @@
+import { useRenderTimer } from '../utils/perfWatch';
 import { favoriteMenuRow } from '../navigation/favorites';
 import { useFolderArrival } from '../navigation/folderArrival';
 import { askBoardsGo } from '../utils/deleteFates';
@@ -84,6 +85,7 @@ export default function BoardsListScreen({
   inPane,
   standalone,
 }: { inPane?: boolean; standalone?: boolean } = {}) {
+  useRenderTimer('BoardsList');
   // The three desks stay in the dock inside a base (deskBeadsBus's useDockDesksHere).
   useDockDesksWhileFocused(!!standalone && !inPane);
   const theme = useTheme();

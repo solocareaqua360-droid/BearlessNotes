@@ -7,6 +7,30 @@
 // opening report prints what it saw around the tap.
 
 import { useLayoutEffect } from 'react';
+import { Linking } from 'react-native';
+
+// THE TRACE (2026-11-16, the optimisation pass: «гальмує при вході в бази, при перемиканні в доку капсули»). Off unless
+// `mindeva://perf?on=1` is opened from a computer (adb); then every stall over 50 ms, every render over 8 ms, every
+// Firestore snapshot handled in over 8 ms and every screen change goes to the log as a «[perf]» line - read with
+// `adb logcat -s ReactNativeJS`. Nobody meets it in the app; a restart turns it off.
+let trace = false;
+export function perfTraceOn(): boolean {
+  return trace;
+}
+function tline(text: string) {
+  // eslint-disable-next-line no-console
+  console.log(`[perf] ${Date.now() % 100000} ${text}`);
+}
+export function perfMark(name: string): void {
+  if (trace) tline(`mark ${name}`);
+}
+function onUrl(url: string | null) {
+  if (!url || !url.startsWith('mindeva://perf')) return;
+  trace = /[?&]on=1/.test(url);
+  tline(trace ? 'trace on' : 'trace off');
+}
+Linking.getInitialURL().then(onUrl).catch(() => {});
+Linking.addEventListener('url', ({ url }) => onUrl(url));
 
 type Run = { at: number; label: string; ms: number };
 
@@ -32,6 +56,7 @@ export function listenerStopped(label: string): void {
 }
 
 export function snapshotHandled(label: string, ms: number): void {
+  if (trace && ms >= 8) tline(`snap ${label} ${Math.round(ms)}ms`);
   runs.push({ at: Date.now(), label, ms });
   trim(runs);
 }
@@ -46,6 +71,7 @@ export function useRenderTimer(label: string): void {
     const now = Date.now();
     noteRender(label, now);
     const ms = now - start;
+    if (trace && ms >= 8) tline(`render ${label} ${ms}ms`);
     if (ms < 8) return;
     renders.push({ at: now, label, ms });
     trim(renders);
@@ -126,6 +152,7 @@ setInterval(() => {
   // Minutes "late" is the app having been away (Android stops its timers
   // in the background), not a stall.
   if (late > 10000) return;
+  if (trace && late > 50) tline(`stall ${late}ms`);
   if (late > 150) {
     stalls.push({ at: now, ms: late });
     trim(stalls);

@@ -16,6 +16,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { ShareIntentProvider } from 'expo-share-intent';
 import { DefaultTheme, NavigationContainer, Theme as NavTheme } from '@react-navigation/native';
+import { perfMark, perfTraceOn } from './src/utils/perfWatch';
 import { ensureSignedIn } from './src/firebase';
 import RootNavigator from './src/AppNavigator';
 import { setChromeCompact } from './src/navigation/chromeScroll';
@@ -97,7 +98,21 @@ function ThemedNavigationContainer({ children }: { children: React.ReactNode }) 
       // Every move to another screen brings the folded chrome back (2026-10-16, the user: in a personal base «⋯»,
       // «Виділити» and the search did nothing / were gone). Folding was undone only on a desk change, so a base
       // opened from a scrolled list inherited the fold - and at its top there is nothing to scroll back up with.
-      onStateChange={() => setChromeCompact(false)}
+      onStateChange={(state) => {
+        setChromeCompact(false);
+        // The trace's screen changes (utils/perfWatch): the route now in front.
+        if (perfTraceOn()) {
+          type Level = { index?: number; routes?: { name?: string; state?: unknown }[] };
+          let r = state as Level | undefined;
+          let name = '';
+          while (r && Array.isArray(r.routes)) {
+            const cur = r.routes[r.index ?? 0];
+            name = cur?.name ?? name;
+            r = cur?.state as Level | undefined;
+          }
+          perfMark(`screen ${name}`);
+        }
+      }}
     >
       {/* The app's own ground under everything (2026-10-31, the user: «щось блимає» going from a base to a desk): the window is see-through
           (left from the phone's wallpaper), so a frame in which Android had not yet drawn the desk under a closing screen showed the
