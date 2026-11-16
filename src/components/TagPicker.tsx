@@ -1,3 +1,5 @@
+import { MOTION } from '../theme/desktopTheme';
+import { closedCostsNothing } from '../utils/closedCostsNothing';
 import { useRenderCount } from '../utils/perfWatch';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import IconCatalogGrid from './IconCatalogGrid';
@@ -62,7 +64,7 @@ export const FOLDER_WORDS = { title: 'Папки', create: 'Створити п�
 // Marks where the other folders begin in the one list (see `elsewhere`).
 const SECTION_BREAK = { id: '__section__' } as Tag;
 
-export default function TagPicker({
+function TagPickerOpen({
   visible,
   kind,
   tags,
@@ -606,3 +608,6 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     color: t.ink.faint,
   },
 });
+
+// Built only while open (utils/closedCostsNothing): a base keeps a score of these mounted, closed.
+export default closedCostsNothing(TagPickerOpen, () => MOTION.out + 400);

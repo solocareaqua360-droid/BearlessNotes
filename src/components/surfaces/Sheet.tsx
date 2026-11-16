@@ -1,3 +1,6 @@
+import { MOTION } from '../../theme/desktopTheme';
+import { FLIP_MS } from '../../utils/flipOpen';
+import { closedCostsNothing } from '../../utils/closedCostsNothing';
 import { useRenderCount } from '../../utils/perfWatch';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
@@ -44,7 +47,7 @@ import { useSoft } from '../../theme/soft';
 // ScrollView for the same reason. The third part of that old fix - a
 // gesture root re-declared inside - is not needed: a layer is not a
 // native window, so App.tsx's own root already reaches it.
-export default function Sheet({
+function SheetOpen({
   visible,
   onClose,
   title,
@@ -299,3 +302,6 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flexGrow: 0,
   },
 });
+
+// Built only while open (utils/closedCostsNothing): a base keeps a score of these mounted, closed.
+export default closedCostsNothing(SheetOpen, (p) => (p.flipFrom ? p.flipFrom.ms ?? FLIP_MS : MOTION.out) + 160);

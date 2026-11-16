@@ -1,3 +1,5 @@
+import { MOTION } from '../theme/desktopTheme';
+import { closedCostsNothing } from '../utils/closedCostsNothing';
 import { useRenderCount } from '../utils/perfWatch';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -52,7 +54,7 @@ type Props = {
 // draws inside the screen, so opening one from behind a Modal - the photo
 // viewer, say - puts it underneath, where it stays invisible until that
 // Modal closes. Close the Modal first.
-export default function RenamePrompt({
+function RenamePromptOpen({
   visible,
   title,
   initialValue,
@@ -251,3 +253,6 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     color: t.onAccent,
   },
 });
+
+// Built only while open (utils/closedCostsNothing): a base keeps a score of these mounted, closed.
+export default closedCostsNothing(RenamePromptOpen, () => MOTION.out + 400);

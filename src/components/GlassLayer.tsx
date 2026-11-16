@@ -24,7 +24,19 @@ import { deg } from '../utils/angle';
 // Two things a Modal used to provide have to be provided here: the
 // hardware back button, and the gesture root - App.tsx's own reaches this
 // now that it isn't a separate window.
-export default function GlassLayer({
+// A CLOSED WINDOW COSTS NOTHING (2026-11-16, measured: a base keeps every window it can open mounted - 20-25 of them - and
+// each re-render of the base ran each closed window's hooks: the blur target, the leaving clock, two animated styles and a
+// shared value. 77 to 101 of these per opening of a base, ~100 ms of the thread for windows nobody could see.) Out here
+// only the leaving clock runs; the window itself is built when it opens and kept until it has played its way out.
+type GlassLayerProps = Parameters<typeof GlassLayerOpen>[0];
+export default function GlassLayer(props: GlassLayerProps) {
+  // Long enough for the slowest way out (a card turned back), a little more so the window inside finishes first.
+  const { mounted } = useLeaving(props.visible, (props.flipFrom ? props.flipFrom.ms ?? FLIP_MS : MOTION.out) + 60);
+  if (!mounted) return null;
+  return <GlassLayerOpen {...props} />;
+}
+
+function GlassLayerOpen({
   visible,
   onClose,
   children,
