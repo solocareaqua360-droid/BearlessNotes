@@ -1,3 +1,4 @@
+import { favoriteMenuRow } from '../navigation/favorites';
 import { useFolderArrival } from '../navigation/folderArrival';
 import MenuLabel from '../components/MenuLabel';
 import { SwipeSelectItem } from '../components/SwipeSelect';
@@ -460,6 +461,8 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
           close();
         },
       },
+      // «Обране» on the Start (navigation/favorites).
+      favoriteMenuRow('files', file.id, close),
       // Where the drag-and-drop lands a card, for anyone who would rather
       // pick the folder from a list - and the only way to reach a folder
       // that is not on screen.

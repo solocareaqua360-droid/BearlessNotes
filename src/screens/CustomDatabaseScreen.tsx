@@ -1,3 +1,4 @@
+import { favoriteMenuRow } from '../navigation/favorites';
 import { appendToLessonNote, captureVideoFrame, formatStamp, frameBlocks, timecodeBlocks } from '../utils/videoFrames';
 import { SwipeSelectArea, SwipeSelectItem } from '../components/SwipeSelect';
 import { stopScreenCapture, supportsScreenCapture } from '../utils/mindevaNative';
@@ -1633,6 +1634,8 @@ export default function CustomDatabaseScreen({
   function rowMenuRows(row: (typeof rows)[number]): CardMenuRow[] {
     return [
       { icon: 'pencil-outline', label: 'Редагувати', onPress: () => openEditRow(row) },
+      // «Обране» on the Start (navigation/favorites).
+      favoriteMenuRow('customDatabaseRows', row.id, () => setRowMenuId(null)),
       ...(continueDateFieldOf(row)
         ? [{ icon: 'play-skip-forward-outline', label: 'Продовжити', onPress: () => continueRow(row) }]
         : []),

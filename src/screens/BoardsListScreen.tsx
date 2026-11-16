@@ -1,3 +1,4 @@
+import { favoriteMenuRow } from '../navigation/favorites';
 import { useFolderArrival } from '../navigation/folderArrival';
 import { askBoardsGo } from '../utils/deleteFates';
 import { SwipeSelectItem } from '../components/SwipeSelect';
@@ -369,6 +370,8 @@ export default function BoardsListScreen({
         // through the boards shown here.
         ...(pointer ? [{ id: 'tab', label: 'Відкрити в новій вкладці', icon: 'browsers-outline' as const }] : []),
         { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
+        // «Обране» on the Start (navigation/favorites).
+        { id: 'fav', label: favoriteMenuRow('boards', board.id).label, icon: favoriteMenuRow('boards', board.id).icon as 'star-outline' },
         { id: 'tags', label: 'Папки', icon: 'pricetag-outline' },
         // Only where there are folders to move it BETWEEN.
         ...(explorer.active
@@ -379,6 +382,7 @@ export default function BoardsListScreen({
     }).then(async (answer) => {
       if (answer === 'tab') go(openTabWithSequence('board', board.id, boardsHere.map((b) => b.id)));
       if (answer === 'rename') setRenamingBoard(board);
+      if (answer === 'fav') favoriteMenuRow('boards', board.id).onPress();
       if (answer === 'tags') setTagPickerBoardId(board.id);
       if (answer === 'delete') confirmDeleteBoard(board);
       if (answer === 'move') {

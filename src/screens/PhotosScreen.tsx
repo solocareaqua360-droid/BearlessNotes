@@ -1,3 +1,4 @@
+import { favoriteMenuRow } from '../navigation/favorites';
 import { useFolderArrival } from '../navigation/folderArrival';
 import MenuLabel from '../components/MenuLabel';
 import { SwipeSelectItem } from '../components/SwipeSelect';
@@ -738,6 +739,8 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
           ? [{ id: 'file', label: 'У провідник…', icon: 'folder-open-outline' as const }]
           : [{ id: 'move', label: 'Перемістити в папку', icon: 'folder-outline' as const }]),
         { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
+        // «Обране» on the Start (navigation/favorites).
+        { id: 'fav', label: favoriteMenuRow('photos', photo.id).label, icon: favoriteMenuRow('photos', photo.id).icon as 'star-outline' },
         ...(FEATURES.mediaWithoutFolders ? [] : [{ id: 'tags', label: 'Папки', icon: 'pricetag-outline' as const }]),
         { id: 'share', label: 'Поділитись', icon: 'share-social-outline' },
         { id: 'copy', label: 'Копіювати', icon: 'copy-outline' },
@@ -746,6 +749,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
       ],
     });
     if (choice === 'share') shareImage(photo);
+    else if (choice === 'fav') favoriteMenuRow('photos', photo.id).onPress();
     else if (choice === 'copy') copyImage(photo);
     else if (choice === 'file') fileInExplorer.open([{ id: photo.id, tagKind: 'photo', collection: 'photos', tagIds: photo.tagIds }]);
     else if (choice === 'move') {

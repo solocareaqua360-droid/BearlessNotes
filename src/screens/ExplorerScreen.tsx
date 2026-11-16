@@ -7,6 +7,7 @@ import { askFates, boardContentsFates, confirmFates, FATE, type FateEntry, type 
 import { folderPathFromName, resolveFolderPath } from '../utils/folderName';
 import { usePublishRailPanel } from '../navigation/navRail';
 import { usePins } from '../navigation/pinned';
+import { toggleFavorite, useFavorites } from '../navigation/favorites';
 import ExplorerPanel from '../components/desktop/ExplorerPanel';
 import { formatAddedOn } from '../utils/documentPreview';
 import { COMPOSER_CLEAR } from '../components/desktop/Composer';
@@ -263,6 +264,10 @@ function PlaylistFace({ videos, name, count }: { videos: PlaylistVideo[]; name: 
 // be a folder someone made, and it reads as its name wherever a path is shown. Nothing is ever written under it: a
 // thing «moved into» it is taken out of its folder, a thing made inside it is made in no folder (folderOf).
 export const UNFILED = '\u200BНерозкладене';
+// «ОБРАНЕ» (navigation/favorites, 2026-11-16): like «Нерозкладене», a level of the explorer that is not a folder - what the
+// user put in «Обране», wherever it lives. Opened from its row on the Start; nothing can be filed INTO it.
+export const FAVORITES = '\u200BОбране';
+const isPseudoFolder = (p: string | null | undefined) => p === UNFILED || p === FAVORITES;
 const UNFILED_TAG: Tag = {
   id: UNFILED,
   path: UNFILED,
@@ -274,7 +279,7 @@ const UNFILED_TAG: Tag = {
   card: { size: 'M', color: 'mist', pattern: 'light' },
 };
 // The folder a path stands for when writing: none for the root and for «Нерозкладене».
-const folderOf = (p: string | null | undefined): string | null => (p && p !== UNFILED ? p : null);
+const folderOf = (p: string | null | undefined): string | null => (p && !isPseudoFolder(p) ? p : null);
 export type FolderEntry = { path: string; name: string; color?: string; icon?: string; count: number; playlist?: boolean; collection?: CollectionKind; size?: 'S' | 'M' | 'L' };
 
 // What a search reads of a thing: its title, and whatever text its kind carries.
@@ -656,6 +661,9 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
 
   // THE BIN (Кошик): what was deleted, newest first - restored or removed for good here.
   const [inBin, setInBin] = useState(false);
+  // «Обране» (navigation/favorites): the ids, and how many of them are still here (a deleted thing drops out by itself).
+  const favoriteIds = useFavorites();
+  const favoriteSet = useMemo(() => new Set(favoriteIds), [favoriteIds]);
   const binned = useMemo(
     () =>
       all
@@ -911,6 +919,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           const paths = pathsOf.get(item.id) ?? [];
           // The root keeps only folders; what is in none is in «Нерозкладене».
           if (path === UNFILED) return isUnfiled(item);
+          // «Обране»: what the user put there, wherever it lives.
+          if (path === FAVORITES) return favoriteSet.has(item.id);
           // In a project whose root is a folder, the things lying directly in that folder are the project's loose things.
           if (!path && projectsHere && focusRoots.length > 0) return focusRoots.some((r) => paths.includes(r));
           return path ? paths.includes(path) : !FEATURES.unfiledFolder && paths.length === 0;
@@ -929,7 +939,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     };
     return [...sorted].sort((a, b) => rank(a) - rank(b));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shown, pathsOf, path, sortPref, inBin, binned, inCleanup, candidateItems, searching, needle, focusRoots, projectsHere, tags]);
+  }, [shown, pathsOf, path, sortPref, inBin, binned, inCleanup, candidateItems, searching, needle, focusRoots, projectsHere, tags, favoriteSet]);
 
   const levelPins = path ? pinsOf(path) : [];
   // The cards in the order the list draws them - what a swipe's «from here to there» means (components/SwipeSelect).
@@ -1308,13 +1318,13 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const [folderViewsOpen, setFolderViewsOpen] = useState(false);
   const settingsTagOf = (p: string, has: (t: Tag) => boolean) => folderTagsAt(p).find(has) ?? cardTagOf(p);
   function setFolderView(p: string, view: 'list' | 'grid' | 'rows' | 'shelves') {
-    if (p === UNFILED) return;
+    if (isPseudoFolder(p)) return;
     setTagFields(settingsTagOf(p, (t) => !!t.view).id, { view }).catch((e) => notify('Не вдалося зберегти', (e as Error).message));
   }
   // PIN (the user, 2026-10-25: «закріпити файл вгорі списку незважаючи на сортування, до трьох ... шпилька»).
   const MAX_PINS = 3;
   async function togglePin(item: FolderItem) {
-    if (!path || path === UNFILED) return;
+    if (!path || isPseudoFolder(path)) return;
     const pins = pinsOf(path);
     let next: string[];
     if (pins.includes(item.id)) next = pins.filter((id) => id !== item.id);
@@ -1335,7 +1345,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // The tag that stands for a folder path: an existing one, else a new UNIVERSAL one.
   async function tagForPath(folder: string): Promise<Tag> {
     // Never a folder of that name (see UNFILED): every writer goes through folderOf first.
-    if (folder === UNFILED) throw new Error('«Нерозкладене» is not a folder');
+    if (isPseudoFolder(folder)) throw new Error('«Нерозкладене» is not a folder');
     const same = tags.filter((t) => t.path === folder).sort((a, b) => b.types.length - a.types.length);
     if (same.length) return same[0];
     const color = '#DAA587';
@@ -2459,9 +2469,10 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         ...(item.kind === 'photo' ? [{ id: 'copyimg', label: 'Копіювати зображення', icon: 'copy-outline' as const }] : []),
         ...(explorerSelect && item.kind === 'link' ? [{ id: 'copyurl', label: 'Копіювати посилання', icon: 'link-outline' as const }] : []),
         ...(canShare ? [{ id: 'share', label: 'Поділитись', icon: 'share-social-outline' as const }] : []),
-        ...(path && path !== UNFILED && !searching
+        ...(path && !isPseudoFolder(path) && !searching
           ? [{ id: 'pin', label: pinsOf(path).includes(item.id) ? 'Відкріпити' : 'Закріпити вгорі', icon: 'pin-outline' as const }]
           : []),
+        { id: 'favorite', label: favoriteSet.has(item.id) ? 'Прибрати з обраного' : 'В обране', icon: (favoriteSet.has(item.id) ? 'star' : 'star-outline') as 'star-outline' },
         { id: 'select', label: 'Вибрати', icon: 'checkmark-circle-outline' as const },
         ...(canBin ? [{ id: 'delete', label: isReference(item) ? 'Прибрати з папки' : 'Видалити', icon: 'trash-outline' as const, tone: 'danger' as const }] : []),
       ],
@@ -2476,7 +2487,10 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     } else if (choice === 'rename') setRenaming(item);
     else if (choice === 'window') openInWindow(item.kind === 'board' ? { kind: 'board', boardId: item.docId } : item.kind === 'photo' || item.kind === 'file' ? { kind: 'item', collection: item.collection as 'photos' | 'files', id: item.docId } : { kind: 'note', documentId: item.docId });
     else if (choice === 'pin') togglePin(item);
-    else if (choice === 'folders') setFoldersFor([item]);
+    else if (choice === 'favorite') {
+      const added = toggleFavorite(item.id);
+      setToast({ id: Date.now(), message: added ? 'Додано в «Обране»' : 'Прибрано з «Обраного»', left: 2 });
+    } else if (choice === 'folders') setFoldersFor([item]);
     else if (choice === 'share') shareItem(item);
     else if (choice === 'duplicate') {
       try {
@@ -2502,7 +2516,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // THE CARDS' OWN COMMANDS, in the folder that holds them (2026-11-02: the cards' screen left the bases). What the cards' screen
   // kept per project is kept per FOLDER here - the explorer is folders: learning (each card shows «Знаю / Ще вчу»), the learned ones
   // hidden, and starting over. Kept on the folder's tags (every twin of the path).
-  const folderTagsHere = path && path !== UNFILED ? tags.filter((t) => t.path === path) : [];
+  const folderTagsHere = path && !isPseudoFolder(path) ? tags.filter((t) => t.path === path) : [];
   const flagOf = (k: 'flashcardLearning' | 'hideKnownCards') => folderTagsHere.some((t) => !!(t as Tag & Record<string, unknown>)[k]);
   const cardsInFolder = here.filter((i) => i.kind === 'flashcard');
   const anyCardsHere = folderTagsHere.length > 0 && (cardsInFolder.length > 0 || flagOf('hideKnownCards'));
@@ -2551,7 +2565,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     explorerSelect ? null : [
       // The shared set of the bases' «⋯» (the survey of 2026-10-10): the view, the order, then the folder.
       // Inside a folder a list/grid is THAT folder's own view; the canvas (and the root) is the explorer's.
-      ...viewSection(viewMode, (m) => (path && path !== UNFILED && m !== 'canvas' && globalView !== 'canvas' ? setFolderView(path, m === 'grid' ? 'grid' : m === 'rows' ? 'rows' : m === 'shelves' ? 'shelves' : 'list') : changeView(m as FolderCardMode | 'canvas' | 'shelves')), ['list', 'grid', 'rows', 'shelves', 'canvas']),
+      ...viewSection(viewMode, (m) => (path && !isPseudoFolder(path) && m !== 'canvas' && globalView !== 'canvas' ? setFolderView(path, m === 'grid' ? 'grid' : m === 'rows' ? 'rows' : m === 'shelves' ? 'shelves' : 'list') : changeView(m as FolderCardMode | 'canvas' | 'shelves')), ['list', 'grid', 'rows', 'shelves', 'canvas']),
       { label: 'Вигляд папок…', icon: 'options-outline' as const, onPress: () => setFolderViewsOpen(true) },
       ...orderSection(sortPref, selectSortField),
       { label: 'Групувати за типом', icon: 'layers-outline' as const, checked: byKind, onPress: toggleByKind },
@@ -3076,7 +3090,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const countWords = (n: number) => `${n} ${n % 10 === 1 && n % 100 !== 11 ? 'предмет' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'предмети' : 'предметів'}`;
   const pinsApi = usePins();
   const folderForPanel = (fp: string, isChosen: boolean) => {
-    const colourable = fp !== UNFILED && !!fp;
+    const colourable = !isPseudoFolder(fp) && !!fp;
     return {
       label: fp ? folderLabel(fp) : 'Провідник',
       sub: fp ? `${countWords(directItemsOf(fp).length)}${subFoldersOf(fp) ? ` · ${subFoldersOf(fp)} папок` : ''}` : `${countWords(items.length)} · ${new Set(tags.map((t) => t.path.split('/')[0])).size} папок`,
@@ -3101,7 +3115,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       <ExplorerPanel
         view={viewMode === 'wide' ? 'grid' : viewMode === 'rows' ? 'list' : viewMode}
         // Inside a folder the view is the folder's own (as «⋯» → «Вигляд» sets it); the canvas is one for all.
-        onView={(v) => (path && path !== UNFILED && v !== 'canvas' && globalView !== 'canvas' ? setFolderView(path, v) : changeView(v))}
+        onView={(v) => (path && !isPseudoFolder(path) && v !== 'canvas' && globalView !== 'canvas' ? setFolderView(path, v) : changeView(v))}
         sortPref={sortPref}
         onSort={selectSortField}
         byKind={byKind}
@@ -3340,7 +3354,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           папками»), and nowhere else on the start's levels. */}
       {/* «Думки» and, beside it, the bases put in «Обране» (StartFavorites). */}
       <View style={{ marginTop: recentsOn ? 10 : 0 }}>
-        <StartFavorites />
+        <StartFavorites favorites={shown.filter((i) => favoriteSet.has(i.id)).length} onFavorites={() => setPath(FAVORITES)} />
       </View>
       {/* «Папки ›» opens every folder as cards (the explorer's own first level); the rest of the head folds the rows. */}
       <StartHead title="Папки" folded={!!startFold.folders} count={foldersAll.length} onOpen={() => setStartLevels([START_FOLDERS])} onToggle={() => toggleStartFold('folders')} />
@@ -4537,13 +4551,15 @@ async function holdStartBase(key: string, label: string, fav: { isOn: (key: stri
 
 // «ДУМКИ» AND «ОБРАНЕ» (2026-11-02, the user: «базу можна закріпити в обране і вона буде на рівні з думками»): the few bases in use
 // now stand as rows right under «Думки», in the order they were put there; they stay in «Бази» below as well, which can then fold.
-function StartFavorites() {
+function StartFavorites({ favorites, onFavorites }: { favorites: number; onFavorites: () => void }) {
   const { customDatabases, iconFor } = useDatabaseTiles();
   const desksControl = useContext(DesksControlContext);
   const fav = useFavoriteBases();
   return (
     <>
-      {FEATURES.thoughts && <ThoughtsRow last={fav.keys.length === 0} />}
+      {FEATURES.thoughts && <ThoughtsRow last={false} />}
+      {/* «ОБРАНЕ» (navigation/favorites): every thing put there from a hold menu - a note, a board, a link, a photo, a record. */}
+      <StartRow icon="star-outline" name="Обране" count={favorites > 0 ? favorites : undefined} last={fav.keys.length === 0} onPress={onFavorites} />
       {fav.keys.map((key, i) => {
         const face = deskFace(key, customDatabases, iconFor);
         return (

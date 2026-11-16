@@ -34,6 +34,7 @@ import { Ionicons } from '../components/icons/Ionicons';
 import { FolderRowItem } from '../components/FolderItemCard';
 import type { FolderItem } from '../hooks/useAllFolderItems';
 import { viewSection } from '../navigation/topMenu';
+import { favoriteMenuRow } from '../navigation/favorites';
 import type { MenuEntry } from '../components/surfaces/Menu';
 import { useSoft } from '../theme/soft';
 import { GestureDetector } from 'react-native-gesture-handler';
@@ -659,6 +660,8 @@ export default function LinksScreen({
           close();
         },
       },
+      // «Обране» on the Start (navigation/favorites).
+      favoriteMenuRow('links', link.id, close),
       // The address into the phone's share sheet, with the title above it
       // when there is one - a place on a map, a video, a page alike.
       {
