@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import Animated from 'react-native-reanimated';
 import * as DocumentPicker from 'expo-document-picker';
@@ -303,6 +303,8 @@ export default function GeoImportSheet({
               style={[styles.show, showable.length === 0 && { opacity: 0.5 }]}
               disabled={showable.length === 0}
               onPress={() => {
+                // The name field may hold the keyboard; it stayed up over the map after the window closed.
+                Keyboard.dismiss();
                 onShow(showable, fileName);
                 onClose();
               }}
