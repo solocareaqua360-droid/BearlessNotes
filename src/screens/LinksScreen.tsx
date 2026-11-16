@@ -71,7 +71,7 @@ import DocumentPickerModal, { PickableDocument } from '../components/DocumentPic
 import UndoToast from '../components/UndoToast';
 import { gridBasis, gridFillerCount, LinkGridCell, LinkRow } from '../components/ItemCards';
 import GroupSections from '../components/GroupSections';
-import TagPicker, { COLLECTION_WORDS, PLAYLIST_WORDS } from '../components/TagPicker';
+import TagPicker, { COLLECTION_WORDS, FOLDER_WORDS, PLAYLIST_WORDS } from '../components/TagPicker';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import GroupPickerSheet, { GroupKind } from '../components/GroupPickerSheet';
 import CopyToNoteModal from '../components/CopyToNoteModal';
@@ -210,7 +210,9 @@ export default function LinksScreen({
   const category = categoryProp ?? route?.params.category ?? 'other';
   // The media bases keep no folders of their own (features.mediaWithoutFolders) - except the geo points, which got
   // theirs back (the user, 2026-10-13: «в геоточках зараз неможливо створити папку»).
-  const noFolders = FEATURES.mediaWithoutFolders && category !== 'geo' && !(FEATURES.baseCollections && category === 'video');
+  // The plain links got theirs too (2026-11-16, the user's: «в посиланнях я не можу створити папку… мені треба розкласти
+  // мої посилання по папкам») - the base's own folders, like the geo points' collections, called simply «папка».
+  const noFolders = FEATURES.mediaWithoutFolders && category !== 'geo' && !FEATURES.baseCollections;
   // In front: the start desk's recents (geo, YouTube / TikTok, links).
   useTileOpened(category === 'geo' ? 'geo' : category === 'video' ? 'video' : 'links');
   // Neither grid nor list here left room for the dock at the bottom of
@@ -468,7 +470,7 @@ export default function LinksScreen({
     attachTag: list.attachTag,
     detachTag: list.detachTag,
     playlist: category === 'video',
-    baseOnly: FEATURES.baseCollections && (category === 'video' || category === 'geo'),
+    baseOnly: FEATURES.baseCollections,
   });
   // «У провідник» (the video base first): files the chosen videos in explorer folders.
   const fileInExplorer = useFileInExplorer({
@@ -529,8 +531,8 @@ export default function LinksScreen({
 
   // A base of collections (YouTube's playlists, geo's collections): the dock, the picker and the strip over the dock
   // offer only this base's own, never the explorer's folders (2026-10-15).
-  const ownCollectionsOn = FEATURES.baseCollections && (category === 'video' || category === 'geo');
-  const collectionWords = category === 'video' ? PLAYLIST_WORDS : COLLECTION_WORDS;
+  const ownCollectionsOn = FEATURES.baseCollections;
+  const collectionWords = category === 'video' ? PLAYLIST_WORDS : category === 'geo' ? COLLECTION_WORDS : FOLDER_WORDS;
 
   // Held: the chat's gesture - see FolderHoldMenu.
   // «У провідник…» on a PLAYLIST (the video base, 2026-10-11): the playlist is a folder of the explorer, and this
@@ -538,7 +540,7 @@ export default function LinksScreen({
   // A playlist shows its videos, a collection of points its points on a map (CollectionCard) - in the folders and
   // lifted under a held menu alike.
   const collectionFace =
-    FEATURES.collectionCards && ownCollectionsOn
+    FEATURES.collectionCards && ownCollectionsOn && category !== 'other'
       ? (folder: ExplorerFolder) => {
           const tag = folder.tag;
           if (!tag) return null;
@@ -679,7 +681,7 @@ export default function LinksScreen({
         : [
             {
               icon: 'folder-outline',
-              label: FEATURES.baseCollections && category === 'video' ? 'У плейліст…' : FEATURES.baseCollections && category === 'geo' ? 'У підбірку…' : 'Перемістити в папку',
+              label: FEATURES.baseCollections && category === 'video' ? 'У плейліст…' : FEATURES.baseCollections && category === 'geo' ? 'У підбірку…' : 'У папку…',
               onPress: async () => {
                 close();
                 const destination = await explorer.pickDestination(`Перемістити «${link.title || link.url}» в…`);
@@ -689,7 +691,7 @@ export default function LinksScreen({
             },
           ]),
       // Every link base files into the explorer now (mediaWithoutFolders), not only the video one.
-      ...(category === 'video' || noFolders
+      ...(category === 'video' || category === 'other' || noFolders
         ? [
             {
               icon: 'folder-open-outline',
@@ -1420,8 +1422,8 @@ export default function LinksScreen({
       shown={trashOpen ? trashedLinks : linksHere}
       bulk={{
         onTag: () => setBulkTagPickerVisible(true),
-        tagLabel: ownCollectionsOn ? (category === 'video' ? 'У плейліст' : 'У підбірку') : undefined,
-        tagIcon: ownCollectionsOn ? 'albums-outline' : undefined,
+        tagLabel: ownCollectionsOn ? (category === 'video' ? 'У плейліст' : category === 'geo' ? 'У підбірку' : 'У папку') : undefined,
+        tagIcon: ownCollectionsOn ? (category === 'other' ? 'folder-outline' : 'albums-outline') : undefined,
         folderTags: ownCollectionsOn ? explorer.ownCollections : undefined,
         onFile:
           category === 'video' || ownCollectionsOn

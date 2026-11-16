@@ -56,6 +56,7 @@ type Props = {
 // from a first assignment (there's no standalone tag-creation path).
 export const COLLECTION_WORDS = { title: 'Підбірки', create: 'Створити підбірку', newTitle: 'Нова підбірка', nameTitle: 'Назва підбірки' };
 export const PLAYLIST_WORDS = { title: 'Плейлисти', create: 'Створити плейліст', newTitle: 'Новий плейліст', nameTitle: 'Назва плейлиста' };
+export const FOLDER_WORDS = { title: 'Папки', create: 'Створити папку', newTitle: 'Нова папка', nameTitle: 'Назва папки' };
 
 // Marks where the other folders begin in the one list (see `elsewhere`).
 const SECTION_BREAK = { id: '__section__' } as Tag;
