@@ -6,22 +6,25 @@ import { isMapsUrl } from './linkPreview';
 // read by importTable's parseTableFile is turned into points here: which column is what is guessed from the header
 // row and the cells, and the user can reassign any column.
 
-export type GeoColumnRole = 'name' | 'coords' | 'lat' | 'lng' | 'note' | 'skip';
+// 'folder' (2026-11-16, ~1600 points from a table): the collection of the geo base a row goes into («Україна/Запоріжжя»
+// nests); a row with none goes where the sheet's own field says, by default a collection named by the import's date.
+export type GeoColumnRole = 'name' | 'coords' | 'lat' | 'lng' | 'note' | 'folder' | 'skip';
 export const GEO_ROLE_LABEL: Record<GeoColumnRole, string> = {
   name: 'Назва',
   coords: 'Координати',
   lat: 'Широта',
   lng: 'Довгота',
   note: 'Примітка',
+  folder: 'Підбірка',
   skip: 'Пропустити',
 };
 // The order a column's chip steps through on each tap.
-export const GEO_ROLE_CYCLE: GeoColumnRole[] = ['name', 'coords', 'lat', 'lng', 'note', 'skip'];
+export const GEO_ROLE_CYCLE: GeoColumnRole[] = ['name', 'coords', 'lat', 'lng', 'note', 'folder', 'skip'];
 
 // What one row became: a place read on the phone, a Maps link that needs the network to be read, or nothing usable.
 export type GeoImportRow =
-  | { kind: 'point'; title: string; note: string; point: LatLng }
-  | { kind: 'link'; title: string; note: string; url: string }
+  | { kind: 'point'; title: string; note: string; folder: string; point: LatLng }
+  | { kind: 'link'; title: string; note: string; folder: string; url: string }
   | { kind: 'bad'; title: string; reason: string };
 
 const num = (s: string) => Number(s.trim().replace(',', '.'));
@@ -34,6 +37,7 @@ const HEAD: Record<Exclude<GeoColumnRole, 'skip'>, RegExp> = {
   lat: /^(lat|latitude|широта|ш)$/i,
   lng: /^(lng|lon|long|longitude|довгота|д)$/i,
   note: /(примітк|note|comment|коментар|опис|description)/i,
+  folder: /(підбірк|папк|folder|collection|група|категор)/i,
 };
 
 // Whether the first row is a header: none of its cells reads as a place or a number, and the next row has one that does.
@@ -57,7 +61,7 @@ export function guessGeoRoles(grid: string[][], hasHeader: boolean): GeoColumnRo
   };
   // By the header first.
   header.forEach((h, i) => {
-    for (const role of ['lat', 'lng', 'coords', 'note', 'name'] as const) {
+    for (const role of ['lat', 'lng', 'coords', 'folder', 'note', 'name'] as const) {
       if (!taken.has(role) && HEAD[role].test(h)) {
         set(i, role);
         return;
@@ -108,17 +112,19 @@ export function readGeoRows(grid: string[][], hasHeader: boolean, roles: GeoColu
     .map((row, n): GeoImportRow => {
       const title = at(row, 'name') || `Точка ${n + 1}`;
       const note = at(row, 'note');
+      // «Україна / Запоріжжя» and «Україна/Запоріжжя» are the same place.
+      const folder = at(row, 'folder').split('/').map((p) => p.trim()).filter(Boolean).join('/');
       const lat = at(row, 'lat');
       const lng = at(row, 'lng');
       if (lat && lng) {
         const point = { lat: num(lat), lng: num(lng) };
-        return isValidLatLng(point.lat, point.lng) ? { kind: 'point', title, note, point } : { kind: 'bad', title, reason: 'координати поза межами' };
+        return isValidLatLng(point.lat, point.lng) ? { kind: 'point', title, note, folder, point } : { kind: 'bad', title, reason: 'координати поза межами' };
       }
       const raw = at(row, 'coords');
       if (!raw) return { kind: 'bad', title, reason: 'немає координат' };
       const point = parseCoordinatesText(raw);
-      if (point) return { kind: 'point', title, note, point };
-      if (isMapsUrl(raw)) return { kind: 'link', title, note, url: raw };
+      if (point) return { kind: 'point', title, note, folder, point };
+      if (isMapsUrl(raw)) return { kind: 'link', title, note, folder, url: raw };
       return { kind: 'bad', title, reason: 'не схоже на координати' };
     });
 }

@@ -39,6 +39,14 @@ function plural(n: number, one: string, few: string, many: string) {
 
 export type GeoImportProgress = { done: number; total: number; note?: string };
 
+// Where a row with no collection of its own goes unless told otherwise (the user, 2026-11-16: «якщо в імпортованій
+// таблиці не буде папки, то вони завантажуються в окрему папку з назвою, яка відповідає даті імпорту»).
+export function importDateCollection(at = new Date()) {
+  const dd = String(at.getDate()).padStart(2, '0');
+  const mm = String(at.getMonth() + 1).padStart(2, '0');
+  return `Імпорт ${dd}.${mm}.${at.getFullYear()}`;
+}
+
 export default function GeoImportSheet({
   visible,
   onClose,
@@ -125,7 +133,7 @@ export default function GeoImportSheet({
     setBusy(true);
     setProgress({ done: 0, total: usable.length });
     try {
-      const result = await onImport(usable, folder.trim() || null, setProgress);
+      const result = await onImport(usable, folder.split('/').map((p) => p.trim()).filter(Boolean).join('/') || importDateCollection(), setProgress);
       notify(
         'Імпортовано',
         `${result.saved} ${plural(result.saved, 'точка', 'точки', 'точок')}` +
@@ -167,7 +175,7 @@ export default function GeoImportSheet({
             </Pressable>
             {!sheet && (
               <Text style={styles.hint}>
-                Колонки: назва, координати (градуси, MGRS або посилання Google) чи окремо широта й довгота, примітка.
+                Колонки: назва, координати (градуси, MGRS або посилання Google) чи окремо широта й довгота, примітка, підбірка («Україна/Запоріжжя» - вкладена). Рядки без підбірки підуть у підбірку з датою імпорту.
               </Text>
             )}
             {sheet && (
@@ -198,6 +206,7 @@ export default function GeoImportSheet({
                       />
                       <Text style={styles.previewTitle} numberOfLines={1}>
                         {r.title}
+                        {r.kind !== 'bad' && r.folder ? <Text style={styles.previewValue}>{`  · ${r.folder}`}</Text> : null}
                       </Text>
                       <Text style={styles.previewValue} numberOfLines={1}>
                         {r.kind === 'point'
@@ -216,11 +225,11 @@ export default function GeoImportSheet({
                     {bad > 0 ? `${bad} ${plural(bad, 'рядок', 'рядки', 'рядків')} без координат буде пропущено.` : ''}
                   </Text>
                 )}
-                <Text style={styles.section}>Папка</Text>
+                <Text style={styles.section}>{roles.includes('folder') ? 'Підбірка для рядків без своєї' : 'Підбірка'}</Text>
                 <TextInput
                   value={folder}
                   onChangeText={setFolder}
-                  placeholder="Без папки"
+                  placeholder={importDateCollection()}
                   placeholderTextColor={theme.ink.faint}
                   style={styles.input}
                   editable={!busy}

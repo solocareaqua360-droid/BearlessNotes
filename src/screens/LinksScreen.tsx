@@ -56,8 +56,8 @@ import {
 } from '../firestore';
 import { ownedQuery, setDoc } from '../utils/owned';
 import { backfillGeoCoordinatesIfMissing, refreshLinkPreviewIfExpired } from '../utils/linkPreviewRefresh';
-import { db } from '../firebase';
-import { Block, TaggableKind } from '../types';
+import { auth, db } from '../firebase';
+import { Block, TaggableKind, type Tag } from '../types';
 import { LINK_CATEGORY_INFO as CATEGORY_INFO, LinkCategory, categoryFromSiteName } from '../utils/linkCategory';
 import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
@@ -814,30 +814,59 @@ export default function LinksScreen({
   async function importGeoPoints(rows: GeoImportRow[], folder: string | null, progress: (p: GeoImportProgress) => void) {
     let saved = 0;
     let waiting = 0;
-    // The folder is found or made ONCE: asked per row, each row made a twin of it (the explorer's list of folders is
-    // only read again on the next render) - the first import made three «test-import-tochky» (2026-10-28).
-    const folderTag = folder ? await explorer.tagForFolder(folder) : null;
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      if (row.kind === 'bad') continue;
-      let point = row.kind === 'point' ? row.point : null;
-      if (row.kind === 'link') {
-        progress({ done: i, total: rows.length, note: 'читаю посилання Google…' });
-        point = await extractMapsCoordinates(row.url).catch(() => null);
+    const uid = auth.currentUser?.uid;
+    if (!uid) throw new Error('Спершу увійди в акаунт');
+    // Each collection is found or made ONCE, before anything is written: asked per row, each row made a twin of it (the
+    // explorer's list of folders is only read again on the next render) - the first import made three «test-import-tochky»
+    // (2026-10-28). A row's own collection (its column) first, else the sheet's (by default the import's date).
+    const usable = rows.filter((row) => row.kind !== 'bad') as Exclude<GeoImportRow, { kind: 'bad' }>[];
+    const paths = Array.from(new Set(usable.map((row) => row.folder || folder || '').filter(Boolean)));
+    const tagByPath = new Map<string, Tag>();
+    for (const p of paths) {
+      progress({ done: 0, total: usable.length, note: `підбірка «${p}»…` });
+      tagByPath.set(p, await explorer.tagForFolder(p));
+    }
+    // WRITTEN IN BATCHES (2026-11-16, ~1600 points): one point at a time took minutes - two round trips per row. A batch
+    // carries up to 400 points and the one update per collection that says they are in it.
+    const CHUNK = 400;
+    for (let from = 0; from < usable.length; from += CHUNK) {
+      const part = usable.slice(from, from + CHUNK);
+      // A Google Maps link needs the network to give its place; read before the batch, not inside it.
+      const points = new Map<number, LatLng | null>();
+      for (let i = 0; i < part.length; i++) {
+        const row = part[i];
+        if (row.kind === 'point') points.set(i, row.point);
+        else {
+          progress({ done: from + i, total: usable.length, note: 'читаю посилання Google…' });
+          points.set(i, await extractMapsCoordinates(row.url).catch(() => null));
+        }
       }
-      const url = point ? mapsUrlForLatLng(point) : (row as { url: string }).url;
-      const id = linkDocId(url);
-      const now = Date.now();
-      const data: Record<string, unknown> = { url, title: row.title, siteName: 'Геоточка', updatedAt: now, createdAt: now, usedInDocuments: {} };
-      if (point) {
-        data.geoLat = point.lat;
-        data.geoLng = point.lng;
-      } else waiting += 1;
-      if (row.note) data.comment = row.note;
-      await setDoc(doc(db, 'links', id), data, { merge: true });
-      if (folderTag) await attachTag(folderTag, tagKind, id, 'links');
-      saved += 1;
-      progress({ done: i + 1, total: rows.length });
+      const batch = writeBatch(db);
+      const usedIn = new Map<string, Record<string, boolean>>();
+      part.forEach((row, i) => {
+        const point = points.get(i) ?? null;
+        const url = point ? mapsUrlForLatLng(point) : (row as { url: string }).url;
+        const id = linkDocId(url);
+        const now = Date.now();
+        const tag = tagByPath.get(row.folder || folder || '');
+        const data: Record<string, unknown> = { url, title: row.title, siteName: 'Геоточка', updatedAt: now, createdAt: now, usedInDocuments: {}, ownerId: uid };
+        if (point) {
+          data.geoLat = point.lat;
+          data.geoLng = point.lng;
+        } else waiting += 1;
+        if (row.note) data.comment = row.note;
+        if (tag) {
+          data.tagIds = arrayUnion(tag.id);
+          const keys = usedIn.get(tag.id) ?? {};
+          keys[`usedIn.${tagKind}:${id}`] = true;
+          usedIn.set(tag.id, keys);
+        }
+        batch.set(doc(db, 'links', id), data, { merge: true });
+      });
+      usedIn.forEach((keys, tagId) => batch.update(doc(db, 'tags', tagId), { ...keys, types: arrayUnion(tagKind) }));
+      await batch.commit();
+      saved += part.length;
+      progress({ done: Math.min(usable.length, from + CHUNK), total: usable.length });
     }
     return { saved, waiting };
   }
