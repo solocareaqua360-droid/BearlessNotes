@@ -9,7 +9,7 @@ import ScreenGround from './ScreenGround';
 import { useInnerBack } from '../navigation/innerBack';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
-import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { BackHandler, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from './icons/Ionicons';
 import { useIsFocused } from '@react-navigation/native';
@@ -362,6 +362,20 @@ export default function DatabaseChrome<T extends { id: string }>({
         }
       : folderUp ?? backTarget ?? null;
   useTopBack(back, !!topNav);
+  // THE PHONE'S OWN BACK (gesture or key) takes the same inner steps as the arrow - out of choosing, out of searching,
+  // up one folder - and only then leaves the screen. Without it a folder of a base closed the whole base (the user,
+  // 2026-11-16: «при виході з папки в посиланнях мене викидає на екран старту»); the explorer has done this all along.
+  const innerBack = list.isSelectMode || list.isSearching || !!folderUp;
+  const backRef = useRef(back);
+  backRef.current = back;
+  useEffect(() => {
+    if (Platform.OS !== 'android' || !isFocused || !innerBack) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      backRef.current?.();
+      return true;
+    });
+    return () => sub.remove();
+  }, [isFocused, innerBack]);
   // The laptop's one way back: one folder up inside the list.
   useInnerBack(folderUp);
   // Under a bar the search is the bar's own name plate, opened out - no
