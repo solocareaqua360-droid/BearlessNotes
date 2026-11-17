@@ -129,7 +129,7 @@ export function fileIconColorFor(name?: string): string {
   const ext = (name ?? '').toLowerCase().split('.').pop();
   if (ext === 'pdf') return '#DC2626';
   if (ext === 'doc' || ext === 'docx') return '#2563EB';
-  if (ext === 'xls' || ext === 'xlsx') return '#16A34A';
+  if (ext && ['xls', 'xlsx', 'ods', 'fods', 'xlsm', 'xlsb', 'csv', 'tsv'].includes(ext)) return '#16A34A';
   return '#6B7280';
 }
 

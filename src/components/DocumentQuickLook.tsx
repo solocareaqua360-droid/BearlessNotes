@@ -42,7 +42,9 @@ export type QuickLookKind = 'docx' | 'xlsx' | 'pdf' | 'md' | 'pptx' | 'zip';
 export function quickLookKindFor(fileName: string): QuickLookKind | null {
   const ext = fileName.toLowerCase().split('.').pop();
   if (ext === 'docx') return 'docx';
-  if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') return 'xlsx';
+  // 2026-11-17: LibreOffice's .ods/.fods, Excel's macro and binary books, tab-separated text - the same SheetJS reads them all (a
+  // .ods did not open here before: it fell through to «open with» even though the library inside can read it).
+  if (ext && ['xlsx', 'xls', 'csv', 'ods', 'fods', 'xlsm', 'xlsb', 'tsv'].includes(ext)) return 'xlsx';
   if (ext === 'pdf') return 'pdf';
   // 2026-10-31: a Markdown file (read, and taken in as a note), a slide deck (its text and pictures, a card a slide - not its layout),
   // an archive (its files, each opened in turn).

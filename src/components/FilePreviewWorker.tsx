@@ -42,7 +42,7 @@ function pageFor(kind: PreviewJob['kind'], base64: string, library: string): str
            .catch(fail);`
       : kind === 'xlsx'
         ? `try {
-             var wb = XLSX.read(bytes, { type: 'array' });
+             var wb = XLSX.read(bytes, { type: 'array', codepage: 65001 });
              var sheet = wb.Sheets[wb.SheetNames[0]];
              var rows = XLSX.utils.sheet_to_csv(sheet).split('\\n').slice(0, 10);
              var flat = rows.slice(0, 4).join(' · ').replace(/,+/g, ' ').replace(/\\s+/g, ' ').trim();
