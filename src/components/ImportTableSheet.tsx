@@ -58,7 +58,7 @@ type Props = {
   onDone: (databaseId: string, rowCount: number) => void;
 };
 
-// Import a .xlsx/.xls/.csv into a database: pick the file, say which of its
+// Import a .xlsx/.xls/.ods/.csv/.tsv into a database: pick the file, say which of its
 // columns becomes which database column, import. Typing every row by hand
 // is the thing this exists to avoid, so the mapping step is deliberately
 // the only step that asks anything.
@@ -187,7 +187,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
       setDatabaseName(displayName.replace(/\.[^.]+$/, ''));
     } catch (e) {
       console.warn('[ImportTableSheet] parse failed', e);
-      notify('Не вдалося прочитати файл', 'Підтримуються .xlsx, .xls і .csv.');
+      notify('Не вдалося прочитати файл', 'Підтримуються .xlsx, .xls, .ods, .csv і .tsv.');
     } finally {
       setBusy(false);
     }
@@ -413,7 +413,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
 
           {!sheet ? (
             <View style={styles.pickArea}>
-              <Text style={styles.hint}>Оберіть файл .xlsx, .xls або .csv, або встав таблицю текстом.</Text>
+              <Text style={styles.hint}>Оберіть файл .xlsx, .xls, .ods, .csv або .tsv, або встав таблицю текстом.</Text>
               {pasting ? (
                 <>
                   <TextInput

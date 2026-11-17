@@ -93,7 +93,7 @@ export default function GeoImportSheet({
     if (result.canceled || !result.assets[0]) return;
     const { uri, name } = result.assets[0];
     if (!isTableFileName(name)) {
-      notify('Не таблиця', 'Оберіть файл .xlsx, .xls або .csv.');
+      notify('Не таблиця', 'Оберіть файл .xlsx, .xls, .ods, .csv або .tsv.');
       return;
     }
     setBusy(true);
@@ -203,7 +203,7 @@ export default function GeoImportSheet({
             <Pressable style={styles.fileButton} onPress={pickFile} disabled={busy}>
               <Ionicons name={sheet ? 'document-text-outline' : 'cloud-upload-outline'} size={19} color={theme.ink.primary} />
               <Text style={styles.fileLabel} numberOfLines={1}>
-                {sheet ? `${fileName} · ${rows.length} ${plural(rows.length, 'рядок', 'рядки', 'рядків')}` : 'Обрати файл .xlsx або .csv'}
+                {sheet ? `${fileName} · ${rows.length} ${plural(rows.length, 'рядок', 'рядки', 'рядків')}` : 'Обрати файл .xlsx, .ods або .csv'}
               </Text>
             </Pressable>
             {!sheet && (

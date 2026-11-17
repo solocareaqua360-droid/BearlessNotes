@@ -30,9 +30,12 @@ function generateId(): string {
 // source - by its own name, since that's what the user recognises and what
 // the picker filters on anyway.
 export function isTableFileName(name: string): boolean {
-  return /\.(xlsx|xls|csv)$/i.test(name.trim());
+  return /\.(xlsx|xls|csv|ods|fods|xlsm|xlsb|tsv)$/i.test(name.trim());
 }
 
+// (2026-11-17, with filEva's viewer: .ods and .fods from LibreOffice, .xlsm and .xlsb from Excel, .tsv - SheetJS reads all of
+// them through the same call below, checked on files with Ukrainian text and coordinates; a .ods/.xlsm/.xlsb is a zip («PK»)
+// like .xlsx, a .fods and a .tsv are text, and the text path guesses the separator.)
 // SheetJS reads .xlsx, .xls and .csv from the same call - it sniffs the
 // content rather than trusting the extension, so one path covers all three
 // and a file the user renamed still imports.
