@@ -184,7 +184,8 @@ export default function GeoMapView({
     const south = Math.min(...t.map((p) => p.lat));
     const north = Math.max(...t.map((p) => p.lat));
     if (west === east && south === north) return { center: [west, south] as [number, number], zoom: 12 };
-    return { bounds: [west, south, east, north] as [number, number, number, number] };
+    // Room around them: under the top bar and the dock the points would be at the very edge of the screen, half hidden.
+    return { bounds: [west, south, east, north] as [number, number, number, number], padding: { top: 140, left: 56, right: 56, bottom: bottomInset + 80 } };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
