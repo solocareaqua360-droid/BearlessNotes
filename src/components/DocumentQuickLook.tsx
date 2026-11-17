@@ -35,7 +35,7 @@ import { notify } from './surfaces/Ask';
 // inside the page as base64 - a string that size does not survive the
 // bridge to the WebView, a file does.
 
-export type QuickLookKind = 'docx' | 'xlsx' | 'pdf' | 'md' | 'pptx' | 'zip';
+export type QuickLookKind = 'docx' | 'xlsx' | 'pdf' | 'md' | 'pptx' | 'zip' | 'odf';
 
 // What this can show. Anything else goes straight to the app that opens
 // it - see openFileExternally.
@@ -50,6 +50,7 @@ export function quickLookKindFor(fileName: string): QuickLookKind | null {
   // an archive (its files, each opened in turn).
   if (ext === 'md' || ext === 'markdown') return 'md';
   if (ext === 'pptx') return 'pptx';
+  if (ext === 'odt' || ext === 'odp') return 'odf';
   if (ext === 'zip') return 'zip';
   return null;
 }
@@ -74,6 +75,91 @@ function pageFor(kind: QuickLookKind, base64: string, library: string): string {
     kind === 'md'
       ? `var text = new TextDecoder('utf-8').decode(bytes).replace(/^\\uFEFF/, '');
          root.innerHTML = renderMarkdown(text) || '<p class="muted">Порожній файл</p>';
+         allDone = true; pageDone();`
+      // 2026-11-17, ported from filEva's viewer: OpenDocument text (.odt) and slides (.odp) - headings, paragraphs, lists, tables
+      // and pictures read out of content.xml, not the exact layout.
+      : kind === 'odf'
+      ? `var cfb = XLSX.CFB.read(bytes, { type: 'array' });
+         var find = function (p) { var e = XLSX.CFB.find(cfb, p) || XLSX.CFB.find(cfb, '/' + p); return e && e.content ? new Uint8Array(e.content) : null; };
+         var raw = find('content.xml');
+         if (!raw) throw new Error('Це не файл OpenDocument');
+         var doc = new DOMParser().parseFromString(new TextDecoder('utf-8').decode(raw), 'application/xml');
+         var XLINK = 'http://www.w3.org/1999/xlink';
+         var inline = function (n) {
+           var out = '';
+           for (var i = 0; i < n.childNodes.length; i++) {
+             var c = n.childNodes[i];
+             if (c.nodeType === 3) out += esc(c.nodeValue);
+             else if (c.nodeType === 1) {
+               var ln = c.localName;
+               if (ln === 'line-break') out += '<br>';
+               else if (ln === 's') out += '&nbsp;'.repeat(+(c.getAttribute('text:c') || 1));
+               else if (ln === 'tab') out += '&nbsp;&nbsp;&nbsp;&nbsp;';
+               else if (ln === 'note' || ln === 'annotation') continue;
+               else out += inline(c);
+             }
+           }
+           return out;
+         };
+         var picHtml = function (el) {
+           var href = el.getAttributeNS(XLINK, 'href') || '';
+           var img = href && !/^https?:/.test(href) ? find(href) : null;
+           if (!img || img.length > 3000000) return '';
+           var ext = (href.split('.').pop() || 'png').toLowerCase();
+           if (ext === 'emf' || ext === 'wmf' || ext === 'svm') return '';
+           var bin = '';
+           for (var k = 0; k < img.length; k += 8192) bin += String.fromCharCode.apply(null, img.subarray(k, k + 8192));
+           return '<img src="data:image/' + (ext === 'jpg' ? 'jpeg' : ext) + ';base64,' + btoa(bin) + '">';
+         };
+         var blocks = function (el) {
+           var out = '';
+           for (var i = 0; i < el.childNodes.length; i++) {
+             var c = el.childNodes[i];
+             if (c.nodeType !== 1) continue;
+             var ln = c.localName;
+             if (ln === 'h') out += '<h3>' + inline(c) + '</h3>';
+             else if (ln === 'p') { var t = inline(c); if (t.replace(/&nbsp;|<br>/g, '').trim()) out += '<p>' + t + '</p>'; }
+             else if (ln === 'list') out += '<ul>' + blocks(c) + '</ul>';
+             else if (ln === 'list-item' || ln === 'list-header') out += '<li>' + blocks(c) + '</li>';
+             else if (ln === 'image') out += picHtml(c);
+             else if (ln === 'table') {
+               var rows = '';
+               for (var r = 0; r < c.childNodes.length; r++) {
+                 var row = c.childNodes[r];
+                 if (row.nodeType !== 1 || (row.localName !== 'table-row' && row.localName !== 'table-header-rows' && row.localName !== 'table-rows')) continue;
+                 var rowEls = row.localName === 'table-row' ? [row] : Array.prototype.slice.call(row.childNodes).filter(function (x) { return x.nodeType === 1 && x.localName === 'table-row'; });
+                 rowEls.forEach(function (tr) {
+                   var cells = '';
+                   for (var q = 0; q < tr.childNodes.length; q++) {
+                     var cell = tr.childNodes[q];
+                     if (cell.nodeType !== 1 || cell.localName !== 'table-cell') continue;
+                     var span = cell.getAttribute('table:number-columns-spanned');
+                     cells += '<td' + (span ? ' colspan="' + span + '"' : '') + '>' + blocks(cell) + '</td>';
+                   }
+                   rows += '<tr>' + cells + '</tr>';
+                 });
+               }
+               out += '<div class="scroll"><table>' + rows + '</table></div>';
+             }
+             else if (ln === 'sequence-decls' || ln === 'tracked-changes' || ln === 'forms' || ln === 'automatic-styles' || ln === 'font-face-decls') continue;
+             else out += blocks(c);
+           }
+           return out;
+         };
+         var body = doc.getElementsByTagNameNS('*', 'body')[0];
+         var pres = body ? body.getElementsByTagNameNS('*', 'presentation')[0] : null;
+         var html = '';
+         if (pres) {
+           var n = 0;
+           for (var i = 0; i < pres.childNodes.length; i++) {
+             var pg = pres.childNodes[i];
+             if (pg.nodeType !== 1 || pg.localName !== 'page') continue;
+             n += 1;
+             var inner = blocks(pg);
+             html += '<div class="slide"><div class="num">Слайд ' + n + '</div>' + (inner || '<p class="muted">Порожній слайд</p>') + '</div>';
+           }
+         } else if (body) html = blocks(body);
+         root.innerHTML = html || '<p class="muted">Порожній документ</p>';
          allDone = true; pageDone();`
       : kind === 'pptx'
       ? `var cfb = XLSX.CFB.read(bytes, { type: 'array' });
@@ -526,7 +612,7 @@ export default function DocumentQuickLook({
             ? Promise.resolve('')
             : file.kind === 'docx'
             ? readAsset(MAMMOTH)
-            : file.kind === 'xlsx' || file.kind === 'pptx' || file.kind === 'zip'
+            : file.kind === 'xlsx' || file.kind === 'pptx' || file.kind === 'zip' || file.kind === 'odf'
               ? readAsset(XLSX)
               : Promise.all([readAsset(PDFJS), readAsset(PDFJS_WORKER)]).then((parts) => parts.join('\n')),
           LegacyFileSystem.readAsStringAsync(file.uri, { encoding: 'base64' }),
