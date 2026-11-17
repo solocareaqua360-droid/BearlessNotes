@@ -174,6 +174,20 @@ export default function GeoMapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusId]);
 
+  // A table handed over from a viewer arrives together with this map (the base opens with its points already there), and a
+  // camera that is not mounted yet cannot fly: so the map STARTS on them (2026-11-17, seen on the phone: it stayed where it was).
+  const startView = useMemo(() => {
+    const t = points.filter((p) => p.table);
+    if (!t.length) return { center: initialCenter, zoom: initialZoom };
+    const west = Math.min(...t.map((p) => p.lng));
+    const east = Math.max(...t.map((p) => p.lng));
+    const south = Math.min(...t.map((p) => p.lat));
+    const north = Math.max(...t.map((p) => p.lat));
+    if (west === east && south === north) return { center: [west, south] as [number, number], zoom: 12 };
+    return { bounds: [west, south, east, north] as [number, number, number, number] };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // A table's points just shown (utils/geoTable): the camera takes them all in.
   const tableCount = points.reduce((n, p) => (p.table ? n + 1 : n), 0);
   useEffect(() => {
@@ -327,7 +341,7 @@ export default function GeoMapView({
         // carried a raw piece of map. A TextureView is part of the tree, so the shared blur blurs it like any screen.
         androidView="texture"
       >
-        <Camera ref={cameraRef} initialViewState={{ center: initialCenter, zoom: initialZoom }} />
+        <Camera ref={cameraRef} initialViewState={startView} />
         <GeoHouseNumbers />
         {locationEnabled && <UserLocation accuracy />}
         <GeoJSONSource
