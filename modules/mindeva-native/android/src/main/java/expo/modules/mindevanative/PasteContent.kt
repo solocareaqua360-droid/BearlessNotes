@@ -21,7 +21,9 @@ import java.util.UUID
 // The uri's read grant lives only while the listener runs, so each item is copied into the app's cache RIGHT HERE and JS
 // gets file:// paths it can keep.
 object PasteContent {
-  private val MIME_TYPES = arrayOf("image/*", "video/*", "audio/*", "application/*", "text/*", "*/*")
+  // A type set here may not start with * (Android refuses the whole call), so no "*/*": these cover what a clipboard or a
+  // keyboard hands over (pictures, clips, sound, documents, text files).
+  private val MIME_TYPES = arrayOf("image/*", "video/*", "audio/*", "application/*", "text/*")
 
   fun attach(field: EditText, onItems: (List<Map<String, Any?>>) -> Unit) {
     val listener = OnReceiveContentListener { _, payload ->
