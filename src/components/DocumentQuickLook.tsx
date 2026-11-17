@@ -37,7 +37,7 @@ import { showTableOnMap } from '../utils/geoTable';
 // inside the page as base64 - a string that size does not survive the
 // bridge to the WebView, a file does.
 
-export type QuickLookKind = 'docx' | 'xlsx' | 'pdf' | 'md' | 'pptx' | 'zip' | 'odf';
+export type QuickLookKind = 'docx' | 'xlsx' | 'pdf' | 'md' | 'txt' | 'pptx' | 'zip' | 'odf';
 
 // What this can show. Anything else goes straight to the app that opens
 // it - see openFileExternally.
@@ -51,6 +51,8 @@ export function quickLookKindFor(fileName: string): QuickLookKind | null {
   // 2026-10-31: a Markdown file (read, and taken in as a note), a slide deck (its text and pictures, a card a slide - not its layout),
   // an archive (its files, each opened in turn).
   if (ext === 'md' || ext === 'markdown') return 'md';
+  // 2026-11-17: plain text - shown as it is written, no Markdown reading of its stars and hashes.
+  if (ext === 'txt' || ext === 'text' || ext === 'log') return 'txt';
   if (ext === 'pptx') return 'pptx';
   if (ext === 'odt' || ext === 'odp') return 'odf';
   if (ext === 'zip') return 'zip';
@@ -77,6 +79,10 @@ function pageFor(kind: QuickLookKind, base64: string, library: string): string {
     kind === 'md'
       ? `var text = new TextDecoder('utf-8').decode(bytes).replace(/^\\uFEFF/, '');
          root.innerHTML = renderMarkdown(text) || '<p class="muted">Порожній файл</p>';
+         allDone = true; pageDone();`
+      : kind === 'txt'
+      ? `var text = new TextDecoder('utf-8').decode(bytes).replace(/^\\uFEFF/, '');
+         root.innerHTML = text.trim() ? '<pre class="plain">' + esc(text) + '</pre>' : '<p class="muted">Порожній файл</p>';
          allDone = true; pageDone();`
       // 2026-11-17, ported from filEva's viewer: OpenDocument text (.odt) and slides (.odp) - headings, paragraphs, lists, tables
       // and pictures read out of content.xml, not the exact layout.
@@ -367,6 +373,7 @@ function pageFor(kind: QuickLookKind, base64: string, library: string): string {
   pre { background: #F3F4F6; border-radius: 8px; padding: 10px; overflow-x: auto; font-size: 13px; }
   code { background: #F3F4F6; border-radius: 4px; padding: 0 3px; }
   pre code { background: none; padding: 0; }
+  pre.plain { background: none; padding: 0; margin: 0; font: 15px/1.55 -apple-system, Roboto, sans-serif; white-space: pre-wrap; word-break: break-word; }
   blockquote { margin: 8px 0; padding: 6px 12px; border-radius: 8px; background: #F5F3EE; }
   th { background: #F5F3EE; text-align: left; }
   hr { border: none; border-top: 1px solid #E5E7EB; margin: 14px 0; }
@@ -384,7 +391,7 @@ function pageFor(kind: QuickLookKind, base64: string, library: string): string {
   .hint { margin: 0 0 6px; font-size: 13px; color: #9CA3AF; }
   td.sel { background: #DCE6F5; box-shadow: inset 0 0 0 2px #4A72B0; }
 </style></head><body>
-<div id="root" class="${kind === 'pptx' || kind === 'md' || kind === 'zip' ? '' : 'scroll'}"><p class="muted">Відкриваю…</p></div>
+<div id="root" class="${kind === 'pptx' || kind === 'md' || kind === 'txt' || kind === 'zip' ? '' : 'scroll'}"><p class="muted">Відкриваю…</p></div>
 <script>${library}</script>
 <script>
   var root = document.getElementById('root');
@@ -649,7 +656,7 @@ export default function DocumentQuickLook({
     (async () => {
       try {
         const [library, base64] = await Promise.all([
-          file.kind === 'md'
+          file.kind === 'md' || file.kind === 'txt'
             ? Promise.resolve('')
             : file.kind === 'docx'
             ? readAsset(MAMMOTH)
@@ -695,7 +702,7 @@ export default function DocumentQuickLook({
                 {file?.name ?? ''}
               </Text>
             </View>
-            {file?.kind === 'md' && (
+            {(file?.kind === 'md' || file?.kind === 'txt') && (
               <Pressable hitSlop={8} onPress={importAsNote} accessibilityLabel="Імпортувати як нотатку" style={styles.pillButton}>
                 <Ionicons name="download-outline" size={19} color={S.ink} />
               </Pressable>

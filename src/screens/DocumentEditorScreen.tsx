@@ -112,6 +112,7 @@ import { BLOCK_ACTIONS, BlockAction } from '../components/blockActions';
 import { clearCopiedObject, getCopiedObject, useCopiedObject } from '../utils/objectClipboard';
 import { backupFileToDrive } from '../utils/googleDrive';
 import { ensureFileIsHere, openFileExternally } from '../utils/openFileExternally';
+import { localPathFor } from '../utils/localPath';
 import TextRecognizer, {
   RecognizeProgress,
   RecognizeRequest,
@@ -6076,7 +6077,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     if (kind) {
       if (await ensureFileIsHere(file)) {
         noteOpened('file', block.id);
-        setQuickLook({ uri: file.fileUri, name: block.fileTitle || file.fileName, kind, file });
+        setQuickLook({ uri: localPathFor(file.fileUri, file.driveFileId) as string, name: block.fileTitle || file.fileName, kind, file });
       }
       return;
     }

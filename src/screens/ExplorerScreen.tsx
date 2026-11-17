@@ -71,6 +71,7 @@ import FilePreviewWorker from '../components/FilePreviewWorker';
 import FlashcardReader from '../components/FlashcardReader';
 import FlashcardEditor from '../components/FlashcardEditor';
 import { ensureFileIsHere, openFileExternally, shareFile } from '../utils/openFileExternally';
+import { localPathFor } from '../utils/localPath';
 import { holdAsk } from '../components/surfaces/HoldAsk';
 import { folderToZip } from '../utils/folderZip';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
@@ -126,6 +127,7 @@ import SketchEditor from '../components/SketchEditor';
 import { savePhotoSketch } from '../utils/photoSketch';
 import type { SketchElement } from '../types';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
+import { pickAndImportTextNotes } from '../utils/importTextFile';
 import { binNote, purgeNote, restoreNote } from '../utils/nestedNotes';
 import { detachTagFromDeletedItem } from '../hooks/useTags';
 import { BIN_TTL_MS } from '../hooks/useBin';
@@ -1141,7 +1143,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     if (kind) {
       if (await ensureFileIsHere(file)) {
         noteOpened('file', item.docId);
-        setQuickLook({ uri: file.fileUri, name: (raw.title as string) || file.fileName, kind, item });
+        setQuickLook({ uri: localPathFor(file.fileUri, file.driveFileId) as string, name: (raw.title as string) || file.fileName, kind, item });
       }
     } else await openFileExternally(file);
   }
@@ -1368,6 +1370,20 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       await create.start(key as never, here ? await tagForPath(here) : null);
     } catch (e) {
       notify('Не збереглося', (e as Error).message);
+    }
+  }
+  // «Імпорт з файлу…» in the «⋯»: .md / .txt from the device become notes, filed in the folder the explorer stands in.
+  async function importTextFiles() {
+    try {
+      const { made, skipped } = await pickAndImportTextNotes();
+      if (made.length === 0 && skipped.length === 0) return;
+      const here = folderOf(path);
+      const folder = here ? await tagForPath(here) : null;
+      if (folder) for (const note of made) await attachTag(folder, 'document', note.id, 'documents');
+      if (skipped.length > 0) notify('Поки що лише .md і .txt', `Пропущено: ${skipped.join(', ')}`);
+      if (made.length === 1) setJustMade(made[0].id);
+    } catch (e) {
+      notify('Не вдалося імпортувати', (e as Error).message);
     }
   }
   async function moveSelected(dest: string | null) {
@@ -2612,6 +2628,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         ? [{ label: `Уперед: ${folderLabel(history.current.stack[history.current.at + 1])}`, icon: 'arrow-forward-outline' as const, onPress: () => goHistory(1) }]
         : []),
       { label: 'Нова папка', icon: 'folder-open-outline' as const, onPress: () => newFolderHere() },
+      { label: 'Імпорт з файлу…', icon: 'download-outline' as const, onPress: importTextFiles },
       { label: 'Новий ярлик…', icon: 'rocket-outline' as const, onPress: () => newShortcut() },
     ],
     { active: selecting, onPress: () => (selecting ? leaveSelect() : setSelecting(true)) },

@@ -11,7 +11,7 @@ export function markdownToDocument(text: string, fileName?: string): { title: st
   const lines = text.replace(/^﻿/, '').replace(/\r\n?/g, '\n').split('\n');
   const first = lines.findIndex((l) => l.trim() !== '');
   const heading = first >= 0 ? lines[first].match(/^#\s+(.+?)\s*#*\s*$/) : null;
-  const title = heading ? heading[1] : (fileName ?? '').replace(/\.(md|markdown|txt)$/i, '') || 'Без назви';
+  const title = heading ? heading[1] : (fileName ?? '').replace(/\.(md|markdown|txt|text)$/i, '') || 'Без назви';
   const rest = heading ? lines.slice(first + 1).join('\n') : lines.join('\n');
   return { title, blocks: blocksFromText(rest) };
 }

@@ -70,6 +70,7 @@ import { backupFileToDrive } from '../utils/googleDrive';
 import { colorForDocument } from '../utils/documentColor';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { ensureFileIsHere, openFileExternally, shareFile } from '../utils/openFileExternally';
+import { localPathFor } from '../utils/localPath';
 import { openTabWithSequence } from '../navigation/desktopTabs';
 import CardMenu, { type CardMenuRow } from '../components/surfaces/CardMenu';
 import { go } from '../components/DesktopTabs';
@@ -539,7 +540,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
       if (await ensureFileIsHere(file)) {
         setFileFlip(await flipping);
         noteOpened('file', file.id);
-        setQuickLook({ uri: file.fileUri, name: file.title || file.fileName, kind, file });
+        setQuickLook({ uri: localPathFor(file.fileUri, file.driveFileId) as string, name: file.title || file.fileName, kind, file });
       }
       return;
     }
