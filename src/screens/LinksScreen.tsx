@@ -39,7 +39,7 @@ import { viewSection } from '../navigation/topMenu';
 import { favoriteMenuRow } from '../navigation/favorites';
 import { stressPoints, useGeoStress } from '../utils/geoStress';
 import { noteListScrolling } from '../components/GeoThumbnail';
-import { TABLE_POINT_COLOR } from '../utils/geoTable';
+import { TABLE_POINT_COLOR, takePendingTable, usePendingTable } from '../utils/geoTable';
 import type { MenuEntry } from '../components/surfaces/Menu';
 import { useSoft } from '../theme/soft';
 import { GestureDetector } from 'react-native-gesture-handler';
@@ -527,6 +527,14 @@ export default function LinksScreen({
   // A TABLE SHOWN ON THE MAP and kept nowhere (GeoImportSheet's «Показати на карті», utils/geoTable): its rows, the
   // file's name for the capsule over the map. Gone with the capsule's ✕ or when the screen closes.
   const [tableShown, setTableShown] = useState<{ name: string; rows: Extract<GeoImportRow, { kind: 'point' }>[] } | null>(null);
+  // Points a table viewer handed over (cells picked in a file, «Показати на мапі»): shown here like an imported table.
+  const handedTable = usePendingTable();
+  useEffect(() => {
+    if (!handedTable || category !== 'geo') return;
+    setTableShown({ name: handedTable.name, rows: handedTable.rows });
+    setMapVisible(true);
+    takePendingTable();
+  }, [handedTable, category]);
   const tablePoints: GeoMapPoint[] = useMemo(
     () => (tableShown ? tableShown.rows.map((r, i) => ({ id: `table:${i}`, title: r.title, lat: r.point.lat, lng: r.point.lng, table: true })) : []),
     [tableShown]

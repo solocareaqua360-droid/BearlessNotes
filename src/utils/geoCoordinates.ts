@@ -93,3 +93,37 @@ export function parseCoordinatesText(text: string): LatLng | null {
   const commaDecimal = !t.includes('.') ? parseDecimalLatLng(t.replace(/(\d),(\d)/g, '$1.$2')) : null;
   return parseDecimalLatLng(t) ?? commaDecimal ?? parseDmsLatLng(t) ?? parseMgrs(t);
 }
+
+// A COORDINATE INSIDE A TABLE CELL (2026-11-17, the user: «якщо там є координати, то зчитувати тільки їх» - a cell may say
+// «йм. 36T XT 88966 68703» or «ймовірно 36TXT8896668703», and no list of words to strip would ever be complete). The cell is
+// searched for the coordinate itself:
+//  - MGRS: zone, band, two square letters, then an even number of digits (spaces inside allowed);
+//  - a decimal pair «50.4501, 30.5234»;
+//  - or the whole cell, if it is one of the other shapes (degrees-minutes-seconds).
+// A person types «Т» and «Х» on a Ukrainian keyboard that look exactly like Latin ones, so the Cyrillic twins of the MGRS letters
+// are turned into Latin first (only for the search; nothing else in the text is touched).
+const CYRILLIC_TWINS: Record<string, string> = {
+  А: 'A', В: 'B', С: 'C', Е: 'E', Н: 'H', К: 'K', М: 'M', Р: 'P', Т: 'T', Х: 'X', У: 'Y', а: 'a', в: 'b', с: 'c', е: 'e', к: 'k', м: 'm', р: 'p', т: 't', х: 'x', у: 'y',
+};
+const MGRS_IN_TEXT = /(?<![0-9A-Za-z])(\d{1,2})\s*([C-HJ-NP-Xc-hj-np-x])\s*([A-HJ-NP-Za-hj-np-z]{2})\s*((?:\d\s*){2,10})(?![0-9A-Za-z])/;
+const DECIMAL_PAIR_IN_TEXT = /(-?\d{1,3}[.,]\d{2,})\s*[,;\s]\s*(-?\d{1,3}[.,]\d{2,})/;
+
+export function findCoordinatesInText(text: string): LatLng | null {
+  const whole = parseCoordinatesText(text);
+  if (whole) return whole;
+  const latin = text.replace(/[А-Яа-я]/g, (c) => CYRILLIC_TWINS[c] ?? c);
+  const mgrs = MGRS_IN_TEXT.exec(latin);
+  if (mgrs) {
+    const digits = mgrs[4].replace(/\s+/g, '');
+    if (digits.length % 2 === 0) {
+      const point = parseMgrs(`${mgrs[1]}${mgrs[2]}${mgrs[3]}${digits}`);
+      if (point) return point;
+    }
+  }
+  const pair = DECIMAL_PAIR_IN_TEXT.exec(text);
+  if (pair) {
+    const point = parseDecimalLatLng(`${pair[1].replace(',', '.')}, ${pair[2].replace(',', '.')}`);
+    if (point) return point;
+  }
+  return null;
+}

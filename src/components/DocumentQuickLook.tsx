@@ -17,6 +17,8 @@ import { importMarkdown } from '../utils/markdownFile';
 import { openFileExternally } from '../utils/openFileExternally';
 import { navigationRef } from '../navigationRef';
 import { notify } from './surfaces/Ask';
+import { findCoordinatesInText } from '../utils/geoCoordinates';
+import { showTableOnMap } from '../utils/geoTable';
 
 // A quick look at a Word, Excel or PDF file, without leaving the app and
 // without the network - the way a phone's own preview does it: the text
@@ -322,7 +324,20 @@ function pageFor(kind: QuickLookKind, base64: string, library: string): string {
                html += '<h2>' + name + '</h2><p class="error">Цей аркуш показати не вдалося</p>';
              }
            });
-           root.innerHTML = html || '<p class="muted">Порожня таблиця</p>';
+           root.innerHTML = html ? '<p class="hint">Торкніться клітинок з координатами, щоб показати їх на мапі.</p>' + html : '<p class="muted">Порожня таблиця</p>';
+           // PICKING CELLS (2026-11-17, the user): a tap picks a cell or lets it go; the app is told which cells are picked, each with
+           // its row's FIRST cell as the point's name. The picks stay on the page while it is searched (a class survives the marks).
+           root.addEventListener('click', function (ev) {
+             var td = ev.target.closest ? ev.target.closest('td') : null;
+             if (!td || !root.contains(td)) return;
+             td.classList.toggle('sel');
+             var picked = [];
+             Array.prototype.forEach.call(root.querySelectorAll('td.sel'), function (cell) {
+               var first = cell.parentNode && cell.parentNode.cells ? cell.parentNode.cells[0] : null;
+               picked.push({ name: first && first !== cell ? first.textContent.replace(/\\s+/g, ' ').trim() : '', text: cell.textContent.replace(/\\s+/g, ' ').trim() });
+             });
+             if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify({ picked: picked }));
+           });
            allDone = true; pageDone();
          } catch (e) { fail(e); }`;
   return `<!doctype html><html><head><meta charset="utf-8">
@@ -366,6 +381,8 @@ function pageFor(kind: QuickLookKind, base64: string, library: string): string {
   .zname { font-size: 16px; color: #111827; word-break: break-word; }
   .zmeta { font-size: 13px; color: #9CA3AF; margin-top: 2px; }
   .error { color: #B91C1C; }
+  .hint { margin: 0 0 6px; font-size: 13px; color: #9CA3AF; }
+  td.sel { background: #DCE6F5; box-shadow: inset 0 0 0 2px #4A72B0; }
 </style></head><body>
 <div id="root" class="${kind === 'pptx' || kind === 'md' || kind === 'zip' ? '' : 'scroll'}"><p class="muted">Відкриваю…</p></div>
 <script>${library}</script>
@@ -532,6 +549,29 @@ export default function DocumentQuickLook({
     ready: false,
   });
   const [keyboardH, setKeyboardH] = useState(0);
+  // The table's picked cells (the page tells which; each with its row's first cell as a name) and what is done with them.
+  const [picked, setPicked] = useState<{ name: string; text: string }[]>([]);
+  function showPickedOnMap() {
+    if (!file) return;
+    const rows: Parameters<typeof showTableOnMap>[1] = [];
+    let missing = 0;
+    for (const cell of picked) {
+      const point = findCoordinatesInText(cell.text);
+      if (!point) {
+        missing += 1;
+        continue;
+      }
+      rows.push({ kind: 'point', title: cell.name || cell.text.slice(0, 40) || `Точка ${rows.length + 1}`, note: '', folder: '', point });
+    }
+    if (rows.length === 0) {
+      notify('Немає координат', 'У вибраних клітинках не знайшлося координат (градуси, DMS чи військова сітка).');
+      return;
+    }
+    if (missing > 0) notify('Частину пропущено', `${missing} з ${picked.length} клітинок без координат - їх немає на мапі.`);
+    showTableOnMap(file.name, rows);
+    onClose();
+    if (navigationRef.isReady()) (navigationRef.navigate as (n: string, p?: object) => void)('Links', { category: 'geo' });
+  }
   // A file taken out of an archive and looked at in turn (its own quick look over this one).
   const [inner, setInner] = useState<{ uri: string; name: string; kind: QuickLookKind } | null>(null);
   async function openZipEntry(name: string) {
@@ -599,6 +639,7 @@ export default function DocumentQuickLook({
           : `${found.index + 1} з ${found.count}`;
 
   useEffect(() => {
+    setPicked([]);
     if (!file) {
       setHtml(null);
       setError(null);
@@ -677,6 +718,7 @@ export default function DocumentQuickLook({
               try {
                 const data = JSON.parse(e.nativeEvent.data);
                 if (typeof data.open === 'string') openZipEntry(data.open);
+                else if (Array.isArray(data.picked)) setPicked(data.picked);
                 else setFound(data);
               } catch {}
             }}
@@ -705,6 +747,16 @@ export default function DocumentQuickLook({
             pointerEvents="box-none"
             style={[styles.dock, { left: frame.left, width: frame.width, bottom: keyboardH > 0 ? keyboardH + 10 : insets.bottom + 18 }]}
           >
+            {picked.length > 0 && !searching && (
+              <Pressable
+                onPress={showPickedOnMap}
+                accessibilityLabel="Показати вибрані клітинки на мапі"
+                style={[styles.pickedBar, { backgroundColor: S.ink, boxShadow: S.shadow }]}
+              >
+                <Ionicons name="map-outline" size={18} color={S.chrome} />
+                <Text style={[styles.pickedText, { color: S.chrome }]}>{`Показати на мапі · ${picked.length}`}</Text>
+              </Pressable>
+            )}
             <Pressable
               onPress={() => inputRef.current?.focus()}
               style={[styles.field, { backgroundColor: S.chrome, boxShadow: S.shadow }]}
@@ -765,6 +817,8 @@ export default function DocumentQuickLook({
 }
 
 const styles = StyleSheet.create({
+  pickedBar: { position: 'absolute', left: 0, right: 56, bottom: 62, height: 44, borderRadius: 22, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  pickedText: { fontFamily: FONT_SEMIBOLD, fontSize: 15 },
   root: {
     flex: 1,
     backgroundColor: '#fff',
