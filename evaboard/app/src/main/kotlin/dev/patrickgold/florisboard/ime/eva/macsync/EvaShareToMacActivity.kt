@@ -26,7 +26,13 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class EvaShareToMacActivity : ComponentActivity() {
+open class EvaShareToMacActivity : ComponentActivity() {
+    /**
+     * The «У буфер» entry (EvaShareToClipboardActivity) runs this same code but needs no Mac link: the file
+     * only goes into the clipboard history (which the Mac mirrors anyway when its sync is on).
+     */
+    protected open val clipboardOnly: Boolean = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val uris = streams(intent)
@@ -35,7 +41,7 @@ class EvaShareToMacActivity : ComponentActivity() {
             // a cold start reads the settings in the background: wait for them before trusting the switch
             (application as FlorisApplication).preferenceStoreLoaded.first { it }
             val prefs by FlorisPreferenceStore
-            if (!prefs.keyboard.evaMacSync.get()) {
+            if (!clipboardOnly && !prefs.keyboard.evaMacSync.get()) {
                 Toast.makeText(this@EvaShareToMacActivity, "Увімкніть «Буфер обміну на Mac» у налаштуваннях evaBoard", Toast.LENGTH_LONG).show()
                 finish()
                 return@launch
@@ -70,6 +76,7 @@ class EvaShareToMacActivity : ComponentActivity() {
                 this@EvaShareToMacActivity,
                 when {
                     sent == 0 -> "Нічого не вдалося взяти"
+                    clipboardOnly -> "Скопійовано в буфер"
                     status.startsWith("Підключено") -> "Надсилаю на Mac…"
                     else -> "Mac зараз не на звʼязку - надішлю, щойно зʼявиться"
                 },
@@ -86,9 +93,16 @@ class EvaShareToMacActivity : ComponentActivity() {
         } else {
             intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM)
         }?.toList() ?: emptyList()
+        // «Відкрити за допомогою»: the file arrives as the intent's data, not as a stream extra
+        Intent.ACTION_VIEW -> listOfNotNull(intent.data)
         else -> listOfNotNull(
             if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
             else intent.getParcelableExtra(Intent.EXTRA_STREAM)
         )
     }
+}
+
+/** evaBoard: «У буфер» - the same entry as «На Mac», but only into the clipboard history. */
+class EvaShareToClipboardActivity : EvaShareToMacActivity() {
+    override val clipboardOnly: Boolean = true
 }

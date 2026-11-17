@@ -105,6 +105,8 @@ data class ClipboardItem @OptIn(ExperimentalSerializationApi::class) constructor
          * So that every item doesn't have to allocate its own array.
          */
         private val TEXT_PLAIN = listOf("text/plain")
+        // evaBoard: a copied file bigger than this is not duplicated into the history
+        private const val MAX_COPIED_FILE_BYTES = 100L * 1024 * 1024
         private val MEDIA_PROJECTION = arrayOf(OpenableColumns.DISPLAY_NAME)
 
         const val FLORIS_CLIP_LABEL = "florisboard/clipboard_item"
@@ -131,9 +133,12 @@ data class ClipboardItem @OptIn(ExperimentalSerializationApi::class) constructor
             val type = when {
                 dataItem?.uri != null && data.description.hasMimeType("image/*") -> ItemType.IMAGE
                 dataItem?.uri != null && data.description.hasMimeType("video/*") -> ItemType.VIDEO
+                // evaBoard: any other copied file (a PDF, a document, an archive...) is a file card, not an
+                // empty text item; a clip that carries text of its own stays text
+                dataItem?.uri != null && dataItem.text == null && dataItem.uri.authority != ClipboardMediaProvider.AUTHORITY &&
+                    (dataItem.uri.scheme == "content" || dataItem.uri.scheme == "file") -> ItemType.FILE
                 else -> ItemType.TEXT
             }
-
             val isSensitive = if (AndroidVersion.ATLEAST_API33_T) {
                 data.description?.extras?.getBoolean(EXTRA_IS_SENSITIVE) ?: false
             } else {
@@ -144,6 +149,24 @@ data class ClipboardItem @OptIn(ExperimentalSerializationApi::class) constructor
                 data.description?.extras?.getBoolean(EXTRA_IS_REMOTE_DEVICE) ?: false
             } else {
                 false
+            }
+
+            if (type == ItemType.FILE) {
+                val uri = dataItem.uri
+                val info = dev.patrickgold.florisboard.ime.eva.macsync.EvaFiles.info(context, uri)
+                val fromUs = uri.authority == "${context.packageName}.provider.file"
+                val tooBig = info.size > MAX_COPIED_FILE_BYTES
+                val kept = when {
+                    !cloneUri || fromUs -> uri
+                    tooBig -> null
+                    else -> dev.patrickgold.florisboard.ime.eva.macsync.EvaFiles.keepShared(context, uri, info.name)
+                }
+                return if (kept != null) {
+                    ClipboardItem(0, ItemType.FILE, info.name, kept, System.currentTimeMillis(), false, listOf(info.mime), isSensitive, isRemoteDevice)
+                } else {
+                    // too big or unreadable: keep at least its name, so the copy is not lost silently
+                    ClipboardItem.text(info.name).copy(isSensitive = isSensitive, isRemoteDevice = isRemoteDevice)
+                }
             }
 
             val uri = if (type == ItemType.IMAGE || type == ItemType.VIDEO) {

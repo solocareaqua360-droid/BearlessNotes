@@ -36,7 +36,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
@@ -285,8 +287,16 @@ fun ClipboardInputLayout(
             attributes = attributes,
             modifier = modifier
                 .fillMaxWidth()
-                // evaBoard: Samsung-like even cards in the grid; the long-press view keeps its natural size
-                .then(if (contentScrollInsteadOfClip) Modifier else Modifier.aspectRatio(0.92f)),
+                // evaBoard: the card is as tall as its content (a short note is a short card, so more fit on
+                // the screen), within limits; a picture sets its own height from its proportions below. The
+                // long-press view keeps its natural size.
+                .then(
+                    if (contentScrollInsteadOfClip || item.type == ItemType.IMAGE || item.type == ItemType.VIDEO) {
+                        Modifier
+                    } else {
+                        Modifier.heightIn(min = 64.dp, max = 150.dp)
+                    },
+                ),
             clickAndSemanticsModifier = Modifier.combinedClickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = ripple(),
@@ -308,10 +318,12 @@ fun ClipboardInputLayout(
                 }
                 val bitmap = loaded
                 if (bitmap == null) {
-                    Box(Modifier.fillMaxSize()) // the card stays empty for the moment the picture is being prepared
+                    Box(Modifier.fillMaxWidth().aspectRatio(1f)) // the card stays empty for the moment the picture is being prepared
                 } else if (bitmap.isSuccess) {
                     Image(
-                        modifier = if (contentScrollInsteadOfClip) Modifier.fillMaxWidth() else Modifier.fillMaxSize(),
+                        modifier = if (contentScrollInsteadOfClip) Modifier.fillMaxWidth() else Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(pictureRatio(bitmap.getOrThrow())),
                         bitmap = bitmap.getOrThrow(),
                         contentDescription = null,
                         contentScale = if (contentScrollInsteadOfClip) ContentScale.FillWidth else ContentScale.Crop,
@@ -330,10 +342,12 @@ fun ClipboardInputLayout(
                 }
                 val bitmap = loaded
                 if (bitmap == null) {
-                    Box(Modifier.fillMaxSize())
+                    Box(Modifier.fillMaxWidth().aspectRatio(1f))
                 } else if (bitmap.isSuccess) {
                     Image(
-                        modifier = if (contentScrollInsteadOfClip) Modifier.fillMaxWidth() else Modifier.fillMaxSize(),
+                        modifier = if (contentScrollInsteadOfClip) Modifier.fillMaxWidth() else Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(pictureRatio(bitmap.getOrThrow())),
                         bitmap = bitmap.getOrThrow(),
                         contentDescription = null,
                         contentScale = if (contentScrollInsteadOfClip) ContentScale.FillWidth else ContentScale.Crop,
@@ -357,13 +371,12 @@ fun ClipboardInputLayout(
                 // evaBoard: a file (from the Mac, or sent to it): its name under a file icon
                 Column(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(start = 12.dp, top = 38.dp, end = 12.dp, bottom = 12.dp),
+                        .fillMaxWidth()
+                        .padding(start = 10.dp, top = 30.dp, end = 10.dp, bottom = 10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
                 ) {
-                    SnyggIcon(modifier = Modifier.size(34.dp), imageVector = EvaIcons.lucide("file"))
-                    Spacer(modifier = Modifier.height(8.dp))
+                    SnyggIcon(modifier = Modifier.size(28.dp), imageVector = EvaIcons.lucide("file"))
+                    Spacer(modifier = Modifier.height(6.dp))
                     SnyggText(text = item.text ?: "Файл")
                 }
             } else if (!contentScrollInsteadOfClip && clipKind(item) == ClipKind.LINK) {
@@ -375,7 +388,7 @@ fun ClipboardInputLayout(
                 // the text leaves room for the badge row at the top
                 Column(
                     modifier = if (contentScrollInsteadOfClip) Modifier else {
-                        Modifier.padding(start = 12.dp, top = 38.dp, end = 12.dp, bottom = 12.dp)
+                        Modifier.padding(start = 10.dp, top = 30.dp, end = 10.dp, bottom = 10.dp)
                     },
                 ) {
                     ClipTextItemDescription(
@@ -677,8 +690,12 @@ fun ClipboardInputLayout(
         }
     }
 
-    val ground = rememberSnyggThemeQuery(FlorisImeUi.Window.elementName).background()
-        .takeIf { it.isSpecified }?.copy(alpha = 1f) ?: Color.Transparent
+    // evaBoard: the same ground colour the keyboard itself is painted with (FlorisImeService ImeUi). The
+    // Window element's own background is transparent now, and a transparent colour made opaque is BLACK -
+    // that is what darkened the light theme's panel.
+    val ground = rememberSnyggThemeQuery("eva-ground").background()
+        .takeIf { it.isSpecified }?.copy(alpha = 1f)
+        ?: if (isSystemInDarkTheme()) Color.Black else Color(0xFFE8E8E8)
     // an eased (smoothstep) fade: strong at the edge, gone smoothly - not a straight line
     val easedAlpha = listOf(1f, 0.94f, 0.78f, 0.575f, 0.35f, 0.16f, 0.03f, 0f)
     fun fadeBrush(solid: Dp, fade: Dp, top: Boolean): Brush {
@@ -728,6 +745,10 @@ fun ClipboardInputLayout(
         Box(Modifier.align(Alignment.TopStart)) { HeaderRow() }
     }
 }
+
+/** A picture card's width : height, kept between a tall portrait and a wide landscape so no card gets huge. */
+private fun pictureRatio(bitmap: androidx.compose.ui.graphics.ImageBitmap): Float =
+    (bitmap.width.toFloat() / bitmap.height.coerceAtLeast(1)).coerceIn(0.8f, 1.6f)
 
 @Composable
 private fun ClipCategoryTitle(

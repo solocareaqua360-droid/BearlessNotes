@@ -19,6 +19,7 @@ import dev.patrickgold.florisboard.ime.eva.ClipKindBadge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -226,11 +227,11 @@ fun LinkPreviewCard(url: String, preview: Boolean) {
     val shown = loaded
     val short = EvaLinkPreviews.shortLink(url)
     val textInset = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 38.dp, bottom = 12.dp)
-    Box(Modifier.fillMaxSize().clip(RoundedCornerShape(18.dp))) {
+    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))) {
         when {
             shown?.image != null -> {
                 Image(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1.4f),
                     bitmap = shown.image,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
