@@ -67,7 +67,7 @@ import {
 import FormattedText from './FormattedText';
 import { setSelection } from '../utils/setSelection';
 import { withAlpha } from '../utils/color';
-import { attachChipField, CHIP_MARK_ALPHA, supportsChipSpans } from '../utils/mindevaNative';
+import { attachChipField, attachPasteField, CHIP_MARK_ALPHA, supportsChipSpans, type PastedItem } from '../utils/mindevaNative';
 import TableBlockContent from './TableBlockContent';
 import CustomRowBlockCard from './CustomRowBlockCard';
 import LiveDocumentCard from './LiveDocumentCard';
@@ -130,6 +130,8 @@ type BlockRowProps = {
   onOpenReminder: (id: string) => void;
   onUpdateBlock: (id: string, patch: Partial<Block>) => void;
   onFocus: (id: string) => void;
+  // A picture or a file the keyboard's clipboard panel or «Вставити» brought into this block's field (APK with PasteContent).
+  onPasteContent?: (id: string, items: PastedItem[]) => void;
   onSelectionChange: (id: string, start: number, end: number) => void;
   onOpenImage: (id: string) => void;
   onToggleImageFit: (id: string) => void;
@@ -200,6 +202,7 @@ export default function BlockRow({
   onOpenReminder,
   onUpdateBlock,
   onFocus,
+  onPasteContent,
   onSelectionChange,
   onOpenImage,
   onToggleImageFit,
@@ -358,6 +361,17 @@ export default function BlockRow({
     chipFieldTagRef.current = tag;
     attachChipField(tag);
   }, [roundChips, liveRuns]);
+  // The same for a pasted picture or file: named once per field, the handler is always the latest one.
+  const pasteFieldTagRef = useRef<number | null>(null);
+  const onPasteContentRef = useRef(onPasteContent);
+  onPasteContentRef.current = onPasteContent;
+  useEffect(() => {
+    if (!onPasteContentRef.current) return;
+    const tag = findNodeHandle(localInputRef.current);
+    if (tag == null || tag === pasteFieldTagRef.current) return;
+    pasteFieldTagRef.current = tag;
+    attachPasteField(tag, (items) => onPasteContentRef.current?.(item.id, items));
+  }, [canEditText, liveRuns, item.id]);
   useEffect(() => {
     autoGrowInput(localInputRef.current);
   }, [item.text, canEditText]);

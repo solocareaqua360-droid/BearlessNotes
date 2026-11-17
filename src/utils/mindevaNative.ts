@@ -27,6 +27,9 @@ type MindevaNative = {
   configureChipSpans?(fill: number, mark: number, radius: number, padX: number, padTop: number, padBottom: number): boolean;
   attachChipField?(viewTag: number): Promise<boolean>;
   setNavigationBarContrast?(enforced: boolean): boolean;
+  pasteContent?: boolean;
+  attachPasteField?(viewTag: number): Promise<boolean>;
+  addListener?(name: string, fn: (e: unknown) => void): { remove(): void };
 };
 
 const native = requireOptionalNativeModule<MindevaNative>('MindevaNative');
@@ -168,4 +171,33 @@ export function setNavigationBarContrast(enforced: boolean): boolean {
   } catch {
     return false;
   }
+}
+
+// A PICTURE OR A FILE PASTED INTO A NOTE'S FIELD (MindevaNativeModule's PasteContent): the keyboard's clipboard panel and
+// «Вставити» hand it over as copies in the app's cache. A field is named once by its view tag; one listener hears them all
+// and calls the handler registered for that tag. Only in an APK that has it - elsewhere a paste stays text only.
+export type PastedItem = { uri: string; name: string; mime: string; size: number };
+export const supportsPasteContent = !!native?.pasteContent && typeof native?.attachPasteField === 'function';
+
+const pasteHandlers = new Map<number, (items: PastedItem[]) => void>();
+let pasteSub: { remove(): void } | null = null;
+
+export function attachPasteField(viewTag: number | null, onItems: (items: PastedItem[]) => void): () => void {
+  if (!supportsPasteContent || viewTag == null) return () => {};
+  try {
+    if (!pasteSub) {
+      pasteSub =
+        native?.addListener?.('onPasteContent', (e) => {
+          const ev = e as { tag: number; items: PastedItem[] };
+          pasteHandlers.get(ev.tag)?.(ev.items);
+        }) ?? null;
+    }
+    pasteHandlers.set(viewTag, onItems);
+    native?.attachPasteField?.(viewTag)?.catch(() => {});
+  } catch {
+    // An APK without it: a paste stays text.
+  }
+  return () => {
+    if (pasteHandlers.get(viewTag) === onItems) pasteHandlers.delete(viewTag);
+  };
 }

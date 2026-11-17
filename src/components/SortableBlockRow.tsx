@@ -72,6 +72,7 @@ type SortableBlockRowProps = {
   onChangeText: (id: string, text: string) => void;
   onBackspaceEmpty: (id: string) => void;
   onFocus: (id: string) => void;
+  onPasteContent?: (id: string, items: import('../utils/mindevaNative').PastedItem[]) => void;
   onSelectionChange: (id: string, start: number, end: number) => void;
   onOpenImage: (id: string) => void;
   onToggleImageFit: (id: string) => void;
@@ -159,6 +160,7 @@ function SortableBlockRow({
   onChangeText,
   onBackspaceEmpty,
   onFocus,
+  onPasteContent,
   onSelectionChange,
   onOpenImage,
   onToggleImageFit,
@@ -338,6 +340,7 @@ function SortableBlockRow({
             onOpenReminder={onOpenReminder}
             onUpdateBlock={onUpdateBlock}
             onFocus={onFocus}
+            onPasteContent={onPasteContent}
             onSelectionChange={onSelectionChange}
             onOpenImage={onOpenImage}
             onToggleImageFit={onToggleImageFit}

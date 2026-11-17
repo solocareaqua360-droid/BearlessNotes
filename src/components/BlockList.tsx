@@ -74,6 +74,7 @@ type BlockListProps = {
   onChangeText: (id: string, text: string) => void;
   onBackspaceEmpty: (id: string) => void;
   onFocus: (id: string) => void;
+  onPasteContent?: (id: string, items: import('../utils/mindevaNative').PastedItem[]) => void;
   onSelectionChange: (id: string, start: number, end: number) => void;
   onOpenImage: (id: string) => void;
   onToggleImageFit: (id: string) => void;
@@ -158,6 +159,7 @@ function BlockList({
   onChangeText,
   onBackspaceEmpty,
   onFocus,
+  onPasteContent,
   onSelectionChange,
   onOpenImage,
   onToggleImageFit,
@@ -669,7 +671,7 @@ function BlockList({
   const live = useRef<Record<string, unknown>>({});
   live.current = {
     onActivate, onBlur, onToggleSelected, onToggleChecked, onOpenReminder, onUpdateBlock, onChangeText,
-    onBackspaceEmpty, onFocus, onSelectionChange, onOpenImage, onToggleImageFit, onDrawOverImage, onOpenFile,
+    onBackspaceEmpty, onFocus, onPasteContent, onSelectionChange, onOpenImage, onToggleImageFit, onDrawOverImage, onOpenFile,
     onDownloadFile, onOpenFileDatabase, onOpenLink, onOpenLinkDatabase, onTimecode, onNoteLink, onNoteLinkMenu,
     isNestedLink, onOpenSketch, onOpenCustomRow, onOpenDocument, onOpenCustomView, onInputRef, onHoldWithoutDrag,
     handleRowLayout, handleDragStart, handleDragUpdate, handleDragEnd, dragGroupFor,
@@ -688,6 +690,7 @@ function BlockList({
       onChangeText: via('onChangeText'),
       onBackspaceEmpty: via('onBackspaceEmpty'),
       onFocus: via('onFocus'),
+      onPasteContent: via('onPasteContent'),
       onSelectionChange: via('onSelectionChange'),
       onOpenImage: via('onOpenImage'),
       onToggleImageFit: via('onToggleImageFit'),
@@ -801,6 +804,7 @@ function BlockList({
           onChangeText={stable.onChangeText}
           onBackspaceEmpty={stable.onBackspaceEmpty}
           onFocus={stable.onFocus}
+          onPasteContent={onPasteContent ? stable.onPasteContent : undefined}
           onSelectionChange={stable.onSelectionChange}
           onOpenImage={stable.onOpenImage}
           onToggleImageFit={stable.onToggleImageFit}

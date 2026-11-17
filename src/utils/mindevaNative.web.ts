@@ -39,3 +39,9 @@ export function attachChipField(_viewTag: number | null): void {}
 export function setNavigationBarContrast(_enforced: boolean): boolean {
   return false;
 }
+
+export type PastedItem = { uri: string; name: string; mime: string; size: number };
+export const supportsPasteContent = false;
+export function attachPasteField(_viewTag: number | null, _onItems: (items: PastedItem[]) => void): () => void {
+  return () => {};
+}

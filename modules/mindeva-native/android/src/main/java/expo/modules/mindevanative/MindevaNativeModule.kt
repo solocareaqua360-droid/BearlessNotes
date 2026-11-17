@@ -178,6 +178,19 @@ class MindevaNativeModule : Module() {
       true
     }
 
+    // A PICTURE OR A FILE PASTED INTO A NOTE'S FIELD (see PasteContent.kt): JS names the field by its view tag and
+    // hears "onPasteContent" {tag, items: [{uri, name, mime, size}]} for whatever the keyboard or «Вставити» brings.
+    Constant("pasteContent") { true }
+    Events("onPasteContent")
+
+    AsyncFunction("attachPasteField") { viewTag: Int ->
+      val field = appContext.findView<View>(viewTag) as? EditText ?: return@AsyncFunction false
+      PasteContent.attach(field) { items ->
+        sendEvent("onPasteContent", mapOf("tag" to viewTag, "items" to items))
+      }
+      true
+    }.runOnQueue(Queues.MAIN)
+
     AsyncFunction("attachChipField") { viewTag: Int ->
       val field = appContext.findView<View>(viewTag) as? EditText ?: return@AsyncFunction false
       ChipSpans.attach(field)

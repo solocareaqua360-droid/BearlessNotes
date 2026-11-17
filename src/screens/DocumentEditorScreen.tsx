@@ -54,6 +54,7 @@ import { cancelReminder, scheduleReminder, type ReminderKind } from '../utils/re
 // for re-homing a file expo-document-picker (a different module) picked.
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { copyPickedFile } from '../utils/localCopy';
+import { type PastedItem } from '../utils/mindevaNative';
 // react-native-gesture-handler's own ScrollView (not the core RN one) so it
 // shares the same touch arena as our rows' Pan gestures - otherwise a swipe
 // starting on a block (its TextInput especially) never reaches the
@@ -5703,6 +5704,58 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // No cloud upload yet - the picker's own cache copy is what gets stored
   // and later opened, so this only works on the device the file was
   // attached from.
+  // A PICTURE OR A FILE PASTED INTO A BLOCK'S FIELD (the keyboard's clipboard panel, a sticker, «Вставити» - see
+  // utils/mindevaNative's attachPasteField; the APK has already copied each into the cache). A picture is shrunk like a
+  // gallery pick and becomes an image block, anything else a file block. An empty paragraph is taken over by the first
+  // one; in a block that has text they follow it.
+  async function pasteContentIntoBlock(id: string, items: PastedItem[]) {
+    const made: Block[] = [];
+    for (const item of items) {
+      if (item.mime.startsWith('image/') && item.mime !== 'image/svg+xml') {
+        try {
+          const size = await new Promise<{ width: number; height: number }>((resolve, reject) =>
+            Image.getSize(item.uri, (width, height) => resolve({ width, height }), reject)
+          );
+          const uri = await compressPickedImage(item.uri, size.width, size.height);
+          made.push({ ...buildBlock(generateId(), 'image', ''), imageUri: uri, pageOnly: true });
+          continue;
+        } catch {
+          // Not a picture this phone can read (an animated sticker, say): kept as a file below.
+        }
+      }
+      const fileBlock: Block = { ...buildBlock(generateId(), 'file', ''), fileUri: item.uri, fileName: item.name };
+      if (item.mime) fileBlock.mimeType = item.mime;
+      made.push(fileBlock);
+    }
+    if (made.length === 0) return;
+    snapshotBeforeChange();
+    setBlocks((prev) => {
+      const index = prev.findIndex((b) => b.id === id);
+      if (index === -1) return prev;
+      const next = [...prev];
+      const target = next[index];
+      const empty = !target.text && (target.type ?? 'paragraph') === 'paragraph';
+      let last = index;
+      if (empty) {
+        // Keeps the block's own id, so its focus and place stay.
+        next[index] = { ...made[0], id };
+        next.splice(index + 1, 0, ...made.slice(1));
+        last = index + made.length - 1;
+      } else {
+        next.splice(index + 1, 0, ...made);
+        last = index + made.length;
+      }
+      if (last === next.length - 1) {
+        const trailing = newBlock();
+        next.splice(last + 1, 0, trailing);
+        focusIdRef.current = trailing.id;
+      } else {
+        focusIdRef.current = next[last + 1].id;
+      }
+      return next;
+    });
+  }
+
   async function pickFileForBlock(id: string) {
     // copyToCacheDirectory: false keeps the raw content:// SAF URI instead
     // of the picker's own file:// cache copy. Traced through both modules'
@@ -7697,6 +7750,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           onChangeText={handleBlockChange}
           onBackspaceEmpty={handleBackspaceOnEmpty}
           onFocus={handleBlockFocus}
+          onPasteContent={pasteContentIntoBlock}
           onSelectionChange={handleBlockSelectionChange}
           onOpenImage={openImageBlock}
           onToggleImageFit={toggleImageFit}
