@@ -1,5 +1,6 @@
-import { getDriveToken } from './driveToken.web';
-import { notify } from '../components/surfaces/Ask';
+import { driveTokenError, getDriveToken } from './driveToken.web';
+import { connectDrive } from './connectDrive.web';
+import { ask, notify } from '../components/surfaces/Ask';
 
 // "Open this file with something else" - in a browser, that means handing
 // it to the browser.
@@ -31,10 +32,23 @@ export async function openFileExternally(file: {
     notify('Файл недоступний', 'Його копії на Google Диску немає, а локальний файл телефона браузер прочитати не може.');
     return;
   }
-  const token = await getDriveToken(false);
+  let token = await getDriveToken(false);
   if (!token) {
-    notify('Диск не підключений', 'Підключи Google Диск, щоб відкривати файли тут.');
-    return;
+    // Not a dead end: the same window offers the connection, and the file
+    // opens by itself once it is made.
+    const choice = await ask({
+      title: 'Диск не підключений',
+      message: 'Файл лежить на Google Диску. Підтверди доступ - відкриється вікно браузера, а після нього файл відкриється сам.',
+      actions: [{ id: 'connect', label: 'Підключити Диск', tone: 'primary' }],
+      cancelLabel: 'Не зараз',
+    });
+    if (choice !== 'connect') return;
+    if (!(await connectDrive())) {
+      notify('Диск не підключився', driveTokenError() ?? 'Google не повернув доступ. Спробуй ще раз.');
+      return;
+    }
+    token = await getDriveToken(false);
+    if (!token) return;
   }
   // Fetched with the token rather than linked to: a Drive download URL is
   // not public, and a plain <a href> carries no Authorization header. The

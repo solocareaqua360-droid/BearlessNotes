@@ -7,6 +7,8 @@ import { db } from '../firebase';
 import { Ionicons } from '../components/icons/Ionicons';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { openFileExternally } from '../utils/openFileExternally';
+import { connectDrive } from '../utils/connectDrive.web';
+import { hasDriveToken } from '../utils/driveToken.web';
 import { useSoft } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
 
@@ -180,11 +182,16 @@ export default function FileViewScreen() {
       </View>
     );
   } else if (status !== 'ready' || !source) {
-    body = (
+    // The hook listens for the token and fetches again the moment it
+    // arrives, so connecting here is the whole fix - nothing to reload.
+    body = hasDriveToken() ? (
+      <Message S={S} icon="cloud-offline-outline" text="Файлу немає ні на цьому Mac, ні на Диску." />
+    ) : (
       <Message
         S={S}
         icon="cloud-offline-outline"
-        text="Файлу немає ні на цьому Mac, ні на Диску - або Диск не підключений."
+        text="Файл лежить на Google Диску, а Диск тут не підключений."
+        action={{ label: 'Підключити Диск', onPress: () => void connectDrive() }}
       />
     );
   } else if (kind === 'image') {

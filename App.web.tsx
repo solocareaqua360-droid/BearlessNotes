@@ -482,6 +482,32 @@ function HandoffScreen({ request }: { request: { kind: HandoffKind; hint: string
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Signed in, Drive still to be allowed - see below.
+  const [grantFor, setGrantFor] = useState<{ idToken: string; email: string | null } | null>(null);
+
+  // The second click. The sign-in window used up the click, and a browser
+  // opens a popup only in answer to one - so the Drive window right after
+  // it was blocked, every time, and the failure was swallowed: the app got
+  // a sign-in and no Drive, with nothing anywhere saying why (2026-11-19:
+  // «вийшов і зайшов наново - і файл не відкривається»). So the page asks
+  // for the click it needs, and still hands the sign-in over if Drive is
+  // declined.
+  const grant = async () => {
+    if (!grantFor) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await getDriveToken(true, grantFor.email).catch(() => null);
+      await reportToShell({ kind: 'signin', ...grantFor, driveToken: exportDriveToken() });
+      setDone(true);
+    } catch (e) {
+      const message = (e as Error).message;
+      setError(message);
+      await reportToShell({ kind: 'signin', error: message }).catch(() => false);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const run = async () => {
     setBusy(true);
@@ -494,7 +520,13 @@ function HandoffScreen({ request }: { request: { kind: HandoffKind; hint: string
         // but the account has just been chosen, and carrying it as a
         // hint leaves that window nothing to ask but permission.
         await getDriveToken(true, email).catch(() => null);
-        await reportToShell({ kind: 'signin', idToken, email, driveToken: exportDriveToken() });
+        const driveToken = exportDriveToken();
+        if (!driveToken) {
+          // Blocked (no click behind it) or refused: ask again, with a click.
+          setGrantFor({ idToken, email });
+          return;
+        }
+        await reportToShell({ kind: 'signin', idToken, email, driveToken });
       } else {
         await getDriveToken(true, request.hint);
         const granted = exportDriveToken();
@@ -520,6 +552,10 @@ function HandoffScreen({ request }: { request: { kind: HandoffKind; hint: string
         <Text style={styles.body}>
           Готово. Повернись у програму mindEva - вона вже підхопила вхід. Цю вкладку можна закрити.
         </Text>
+      ) : grantFor ? (
+        <Text style={styles.body}>
+          Вхід готовий. Лишився один клік: дозволь доступ до Google Диска - тоді файли й картинки підтягнуться самі.
+        </Text>
       ) : (
         <Text style={styles.body}>
           {request.kind === 'signin'
@@ -529,12 +565,12 @@ function HandoffScreen({ request }: { request: { kind: HandoffKind; hint: string
       )}
       {!!error && <Text style={styles.error}>{error}</Text>}
       {!done && (
-        <Pressable style={styles.button} disabled={busy} onPress={run}>
+        <Pressable style={styles.button} disabled={busy} onPress={grantFor ? grant : run}>
           {busy ? (
             <ActivityIndicator color="#171310" />
           ) : (
             <Text style={styles.buttonLabel}>
-              {request.kind === 'signin' ? 'Увійти через Google' : 'Підключити Диск'}
+              {grantFor ? 'Дозволити Диск' : request.kind === 'signin' ? 'Увійти через Google' : 'Підключити Диск'}
             </Text>
           )}
         </Pressable>
