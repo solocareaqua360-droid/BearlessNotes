@@ -1,6 +1,8 @@
 import { notify } from '../components/surfaces/Ask';
 import { fetchFromDrive } from '../hooks/useAttachmentSource.web';
 import { readPending } from './pendingUploads';
+import { askToConnectDrive } from './connectDrive.web';
+import { hasDriveToken } from './driveToken.web';
 
 // Saving a file to a folder of the user's choosing - in a browser, no.
 //
@@ -31,7 +33,12 @@ export async function downloadToFolder(
   mimeType: string,
   driveFileId?: string
 ): Promise<{ destUri: string; fileName: string } | null> {
-  const blob = await bytesOf(uri, driveFileId);
+  let blob = await bytesOf(uri, driveFileId);
+  // Not here and no Drive: ask for it in the same breath instead of saying
+  // so and leaving the person to find the way (2026-11-19).
+  if (!blob && driveFileId && !hasDriveToken()) {
+    if (await askToConnectDrive()) blob = await bytesOf(uri, driveFileId);
+  }
   if (!blob) {
     notify('Файл недоступний', 'Його немає на цьому пристрої, а копії на Google Диску теж немає або Диск не підключений.');
     return null;

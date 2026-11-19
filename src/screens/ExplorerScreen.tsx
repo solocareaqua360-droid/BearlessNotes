@@ -70,7 +70,7 @@ import DocumentQuickLook, { quickLookKindFor, type QuickLookKind } from '../comp
 import FilePreviewWorker from '../components/FilePreviewWorker';
 import FlashcardReader from '../components/FlashcardReader';
 import FlashcardEditor from '../components/FlashcardEditor';
-import { ensureFileIsHere, openFileExternally, shareFile } from '../utils/openFileExternally';
+import { ensureFileIsHere, openFileExternally, openFileOnDrive, revealFileInFinder, shareFile } from '../utils/openFileExternally';
 import { localPathFor } from '../utils/localPath';
 import { holdAsk } from '../components/surfaces/HoldAsk';
 import { folderToZip } from '../utils/folderZip';
@@ -2488,6 +2488,15 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         ...(item.kind === 'photo' ? [{ id: 'copyimg', label: 'Копіювати зображення', icon: 'copy-outline' as const }] : []),
         ...(explorerSelect && item.kind === 'link' ? [{ id: 'copyurl', label: 'Копіювати посилання', icon: 'link-outline' as const }] : []),
         ...(canShare ? [{ id: 'share', label: 'Поділитись', icon: 'share-social-outline' as const }] : []),
+        // A file can be taken out of the app, not only looked at: saved where the person chooses, shown in
+        // Finder, or found on Drive (2026-11-19: «не можу ні скачати, ні показати де він лежить»).
+        ...(explorerSelect && item.kind === 'file'
+          ? [
+              { id: 'savefile', label: 'Завантажити…', icon: 'download-outline' as const },
+              { id: 'revealfile', label: 'Показати у Finder', icon: 'folder-open-outline' as const },
+              { id: 'ondrive', label: 'Відкрити на Google Диску', icon: 'cloud-outline' as const },
+            ]
+          : []),
         ...(path && !isPseudoFolder(path) && !searching
           ? [{ id: 'pin', label: pinsOf(path).includes(item.id) ? 'Відкріпити' : 'Закріпити вгорі', icon: 'pin-outline' as const }]
           : []),
@@ -2497,7 +2506,18 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       ],
     });
     if (choice === 'open') openItem(item);
-    else if (choice === 'copyimg') {
+    else if (choice === 'savefile' || choice === 'revealfile' || choice === 'ondrive') {
+      const raw = (item.raw ?? {}) as Record<string, unknown>;
+      const file = {
+        fileUri: raw.fileUri as string,
+        fileName: (raw.fileName as string) ?? item.title,
+        mimeType: raw.mimeType as string | undefined,
+        driveFileId: raw.driveFileId as string | undefined,
+      };
+      if (choice === 'savefile') downloadToFolder(file.fileUri, file.fileName, file.mimeType ?? '', file.driveFileId).catch((e: Error) => notify('Не вдалося завантажити', e.message));
+      else if (choice === 'revealfile') revealFileInFinder(file).catch((e: Error) => notify('Не вдалося показати', e.message));
+      else openFileOnDrive(file).catch((e: Error) => notify('Не вдалося відкрити', e.message));
+    } else if (choice === 'copyimg') {
       const raw = (item.raw ?? {}) as Record<string, unknown>;
       copyImageFile(raw.imageUri as string, raw.driveFileId as string | undefined).catch((e: Error) => notify('Не вдалося скопіювати', e.message));
     } else if (choice === 'copyurl') {

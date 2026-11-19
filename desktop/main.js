@@ -206,6 +206,39 @@ async function serveDesktopApi(req, res, pathname) {
     return done(204);
   }
 
+  // «Показати у Finder»: the kept copy is named by its Drive id (the name IS
+  // the content), which is no name for a person to look for. So a copy with
+  // the real name goes to Downloads and THAT is shown. 404 when this machine
+  // does not hold the file yet - the page then fetches it first.
+  if (pathname === '/__desktop/reveal' && req.method === 'POST') {
+    const { id, name } = await readBody(req);
+    if (typeof id !== 'string' || !SAFE_ID.test(id)) return done(400, { error: 'bad id' });
+    const source = path.join(CACHE(), id);
+    if (!fs.existsSync(source)) return done(404);
+    const clean = String(name || id).replace(/[\\/:\u0000]/g, '_').trim().slice(0, 180) || id;
+    const dir = app.getPath('downloads');
+    const ext = path.extname(clean);
+    const stem = clean.slice(0, clean.length - ext.length);
+    let target = path.join(dir, clean);
+    for (let n = 2; fs.existsSync(target) && n < 500; n += 1) target = path.join(dir, `${stem} (${n})${ext}`);
+    try {
+      fs.copyFileSync(source, target);
+    } catch (e) {
+      return done(500, { error: String(e) });
+    }
+    shell.showItemInFolder(target);
+    return done(200, { path: target });
+  }
+
+  // «Відкрити на Google Диску»: the user's real browser, and only Drive's own
+  // address - this is not a way to open anything the page likes.
+  if (pathname === '/__desktop/open-drive' && req.method === 'POST') {
+    const { id } = await readBody(req);
+    if (typeof id !== 'string' || !SAFE_ID.test(id)) return done(400, { error: 'bad id' });
+    shell.openExternal(`https://drive.google.com/file/d/${id}/view`);
+    return done(204);
+  }
+
   // Which of these are NOT kept here yet - asked once for a whole
   // library rather than one HEAD per file, because the answer for a few
   // hundred attachments is what decides where the background download

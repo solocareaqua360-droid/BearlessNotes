@@ -105,3 +105,10 @@ export async function openFileExternally(file: {
   }
   await Sharing.shareAsync(localPathFor(file.fileUri, file.driveFileId) as string, { mimeType: file.mimeType, dialogTitle: file.fileName });
 }
+
+// The laptop's three: «Показати у Finder» and «Відкрити на Google Диску» exist
+// only there (see openFileExternally.web), and the phone's menu never offers
+// them. Declared here so the shared screens compile and a missing export can
+// never take the other platform down.
+export async function revealFileInFinder(_file: { fileName: string; driveFileId?: string }): Promise<void> {}
+export async function openFileOnDrive(_file: { driveFileId?: string }): Promise<void> {}

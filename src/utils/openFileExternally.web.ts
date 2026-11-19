@@ -1,6 +1,8 @@
-import { driveTokenError, getDriveToken } from './driveToken.web';
-import { connectDrive } from './connectDrive.web';
-import { ask, notify } from '../components/surfaces/Ask';
+import { getDriveToken, hasDriveToken } from './driveToken.web';
+import { fetchFromDrive } from '../hooks/useAttachmentSource.web';
+import { openOnDrive, revealKeptCopy } from './desktopBridge.web';
+import { askToConnectDrive } from './connectDrive.web';
+import { notify } from '../components/surfaces/Ask';
 
 // "Open this file with something else" - in a browser, that means handing
 // it to the browser.
@@ -36,17 +38,7 @@ export async function openFileExternally(file: {
   if (!token) {
     // Not a dead end: the same window offers the connection, and the file
     // opens by itself once it is made.
-    const choice = await ask({
-      title: 'Диск не підключений',
-      message: 'Файл лежить на Google Диску. Підтверди доступ - відкриється вікно браузера, а після нього файл відкриється сам.',
-      actions: [{ id: 'connect', label: 'Підключити Диск', tone: 'primary' }],
-      cancelLabel: 'Не зараз',
-    });
-    if (choice !== 'connect') return;
-    if (!(await connectDrive())) {
-      notify('Диск не підключився', driveTokenError() ?? 'Google не повернув доступ. Спробуй ще раз.');
-      return;
-    }
+    if (!(await askToConnectDrive())) return;
     token = await getDriveToken(false);
     if (!token) return;
   }
@@ -76,4 +68,39 @@ export async function shareFile(file: {
   driveFileId?: string;
 }) {
   await openFileExternally(file);
+}
+
+// «Показати у Finder»: Finder shows a file that has a real name, so the Mac's
+// kept copy goes to Downloads under it and that is what is shown. A file not
+// kept here yet is fetched first - asking for Drive on the way if it is not
+// connected.
+export async function revealFileInFinder(file: { fileName: string; driveFileId?: string }): Promise<void> {
+  if (!file.driveFileId) {
+    notify('Файл недоступний', 'Його копії на Google Диску немає, а локальний файл телефона Mac прочитати не може.');
+    return;
+  }
+  let result = await revealKeptCopy(file.driveFileId, file.fileName);
+  if (result === 'missing') {
+    if (!hasDriveToken() && !(await askToConnectDrive())) return;
+    const url = await fetchFromDrive(file.driveFileId);
+    if (!url) {
+      notify('Не вдалося забрати файл', 'Диск не віддав його.');
+      return;
+    }
+    // Kept in the background by the fetch; give it a moment to land.
+    for (let attempt = 0; attempt < 8 && result === 'missing'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      result = await revealKeptCopy(file.driveFileId, file.fileName);
+    }
+  }
+  if (result !== 'shown') notify('Не вдалося показати у Finder', 'Спробуй «Завантажити» - система запитає, куди зберегти.');
+}
+
+// «Відкрити на Google Диску»: the file's own page, in the real browser.
+export async function openFileOnDrive(file: { driveFileId?: string }): Promise<void> {
+  if (!file.driveFileId) {
+    notify('Файл недоступний', 'Його копії на Google Диску немає.');
+    return;
+  }
+  await openOnDrive(file.driveFileId);
 }

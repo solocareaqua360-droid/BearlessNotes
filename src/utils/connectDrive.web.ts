@@ -1,5 +1,6 @@
 import { auth } from '../firebase';
-import { adoptDriveToken, getDriveToken, hasDriveToken } from './driveToken.web';
+import { ask, notify } from '../components/surfaces/Ask';
+import { adoptDriveToken, driveTokenError, getDriveToken, hasDriveToken } from './driveToken.web';
 import { isDesktopShell, requestFromBrowser } from './desktopBridge.web';
 
 // ONE WAY TO CONNECT DRIVE, for every place that finds it missing.
@@ -16,6 +17,21 @@ import { isDesktopShell, requestFromBrowser } from './desktopBridge.web';
 // so the browser is asked and the token is carried back (desktopBridge);
 // in a browser tab it is the popup, which is allowed because this is
 // called from a click.
+// The question that goes with it, for the places that need the bytes NOW (open,
+// save): one window, one button, and the caller carries on if it says yes.
+export async function askToConnectDrive(): Promise<boolean> {
+  const choice = await ask({
+    title: 'Диск не підключений',
+    message: 'Файл лежить на Google Диску. Підтверди доступ - відкриється вікно браузера, а після нього все піде далі саме.',
+    actions: [{ id: 'connect', label: 'Підключити Диск', tone: 'primary' }],
+    cancelLabel: 'Не зараз',
+  });
+  if (choice !== 'connect') return false;
+  if (await connectDrive()) return true;
+  notify('Диск не підключився', driveTokenError() ?? 'Google не повернув доступ. Спробуй ще раз.');
+  return false;
+}
+
 export async function connectDrive(): Promise<boolean> {
   const email = auth.currentUser?.email ?? null;
   if (isDesktopShell()) {

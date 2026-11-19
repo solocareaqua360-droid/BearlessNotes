@@ -150,3 +150,25 @@ export async function keepAttachment(driveFileId: string, blob: Blob): Promise<v
     /* next time, then */
   }
 }
+
+// --- showing a file to the person ----------------------------------------
+
+// A copy with its real name goes to Downloads and Finder shows it. 'missing'
+// when this machine has not got the file yet (the caller fetches it first).
+export async function revealKeptCopy(driveFileId: string, name: string): Promise<'shown' | 'missing' | 'failed'> {
+  if (!isDesktopShell()) return 'failed';
+  const response = await shell('reveal', { id: driveFileId, name });
+  if (!response) return 'failed';
+  if (response.status === 404) return 'missing';
+  return response.ok ? 'shown' : 'failed';
+}
+
+// The file's own page on Google Drive, in the user's real browser.
+export async function openOnDrive(driveFileId: string): Promise<boolean> {
+  if (isDesktopShell()) {
+    const response = await shell('open-drive', { id: driveFileId });
+    return !!response && response.ok;
+  }
+  window.open(`https://drive.google.com/file/d/${encodeURIComponent(driveFileId)}/view`, '_blank', 'noopener');
+  return true;
+}
