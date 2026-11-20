@@ -72,6 +72,7 @@ import { prefetchState, startOfflinePrefetch, subscribeToPrefetch } from './src/
 import { onDesktopCommand } from './src/utils/desktopCommands';
 import { LEAN_WINDOW, BOARD_WINDOW } from './src/utils/leanWindow';
 import { useDevBoardBridge } from './src/utils/devBoardBridge';
+import { useInboxDocsBridge } from './src/utils/inboxDocsBridge';
 import { inspector, useInspectorOpen } from './src/navigation/inspector';
 import { Ionicons } from './src/components/icons/Ionicons';
 import {
@@ -687,6 +688,7 @@ export default function App() {
   }, []);
 
   useDevBoardBridge(!!user);
+  useInboxDocsBridge(!!user);
 
   useEffect(() => {
     ensureSignedIn();

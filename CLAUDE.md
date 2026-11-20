@@ -378,3 +378,9 @@ no access of Claude's own to his data. The app must be open; records wait in the
   closed records leave with their pictures; never copy from it.
 - Do not build new features for the planning tool itself (the user stopped that loop on 2026-10-30). The three old files
   docs/dev-notes/01-03 are a frozen snapshot, not updated.
+
+## Document intake from the other apps' sessions (2026-11-20)
+
+Valuable documents (research, decisions) from the app sessions are kept in mindEva, not lost in chats. A session hands a .md file to this main
+session; run `python3 scripts/inbox-doc.py add <app> <file.md> [--title ...]`. The signed-in Mac app (src/utils/inboxDocsBridge.web.ts) makes it a
+note in the explorer folder named after the app (one folder per app; structuring later). Once per key; an edited note is never overwritten.
