@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="uk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Звички: ескізи</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800&display=swap">
+<style>
+:root{--bg:#F6F5F2;--card:#FFFFFF;--ink:#1E1E1C;--ink2:#6E6D68;--ink3:#A9A79F;--line:rgba(30,30,28,.08);--accent:#D9793F;--accent-soft:#FBEBDD;--green:#6FA37A;--green-soft:#E6F0E8}
+*{box-sizing:border-box}
+body{margin:0;background:#E9E7E2;font-family:"Nunito",system-ui,sans-serif;color:var(--ink);padding:24px}
+h1{font-size:20px;font-weight:800;margin:0 0 4px}
+.lead{color:var(--ink2);font-size:14px;margin:0 0 22px}
+.row{display:flex;gap:22px;flex-wrap:nowrap;align-items:flex-start;margin-bottom:34px}
+figure{margin:0;width:475px;flex:none}
+figcaption{font-size:13.5px;color:var(--ink2);margin-top:10px;line-height:1.4}
+figcaption b{display:block;color:var(--ink);font-size:14.5px}
+.phone{position:relative;width:475px;height:751px;background:var(--bg);border-radius:34px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.14)}
+.status{height:44px;padding:14px 26px 0;font-size:13px;font-weight:800;display:flex;justify-content:space-between}
+.title{padding:6px 22px 0;display:flex;align-items:baseline;justify-content:space-between}
+.title h2{margin:0;font-size:30px;font-weight:800;letter-spacing:-.01em}
+.title span{color:var(--ink2);font-weight:700;font-size:14px}
+.week{display:flex;gap:8px;padding:8px 22px 2px}
+.d{flex:1;text-align:center;font-size:11px;color:var(--ink3);font-weight:700}
+.d i{display:block;width:30px;height:30px;border-radius:50%;margin:5px auto 0;border:2px solid var(--line)}
+.d.full i{background:var(--accent);border-color:var(--accent)}
+.d.part i{background:var(--accent-soft);border-color:var(--accent-soft)}
+.d.today i{border-color:var(--ink)}
+.cards{padding:6px 16px 0;display:flex;flex-direction:column;gap:8px}
+.card{background:var(--card);border-radius:24px;padding:11px 14px;box-shadow:0 2px 14px rgba(30,30,28,.06)}
+.hd{display:flex;align-items:center;gap:10px}
+.ic{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;font-size:18px;background:var(--accent-soft)}
+.ic.g{background:var(--green-soft)}
+.hd b{font-size:16px;font-weight:800}
+.hd small{display:block;color:var(--ink2);font-size:12.5px;font-weight:600}
+.hd .r{margin-left:auto;font-weight:800;font-size:15px}
+.bar{height:8px;border-radius:5px;background:#EFEDE8;margin:8px 0 8px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:5px}
+.btns{display:flex;gap:8px}
+.btn{flex:1;text-align:center;padding:9px 0;border-radius:16px;background:#F3F1EC;font-weight:800;font-size:14.5px}
+.btn.p{background:var(--accent);color:#fff}
+.btn.g{background:var(--green);color:#fff}
+.pill{font-size:11.5px;font-weight:800;padding:4px 9px;border-radius:99px;background:var(--accent-soft);color:#B35A24}
+.dock{position:absolute;left:14px;bottom:14px;width:300px;height:62px;border-radius:31px;background:rgba(255,255,255,.88);box-shadow:0 6px 24px rgba(0,0,0,.12);display:flex;align-items:center;justify-content:space-around;font-size:22px}
+.plus{position:absolute;right:16px;bottom:14px;width:62px;height:62px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;font-size:30px}
+.back{position:absolute;right:92px;bottom:14px;width:62px;height:62px;border-radius:50%;background:#fff;box-shadow:0 6px 24px rgba(0,0,0,.12);display:grid;place-items:center;font-size:20px}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:8px 0;padding:6px 8px;text-align:center}
+.cal b{font-size:11px;color:var(--ink3);font-weight:700}
+.cal i{display:block;width:28px;height:28px;border-radius:50%;margin:auto;border:2px solid var(--line);font-style:normal;font-size:11px;line-height:24px;color:var(--ink3);font-weight:700}
+.cal i.y{background:var(--accent);border-color:var(--accent);color:#fff}
+.cal i.n{border-color:#E4A57A;background:transparent;color:#B35A24}
+.cal i.f{border-style:dashed}
+.big{font-size:52px;font-weight:800;letter-spacing:-.02em;line-height:1}
+.big small{font-size:20px;color:var(--ink2);font-weight:700;letter-spacing:0}
+.weeks{display:flex;gap:10px;align-items:flex-end;height:70px;padding:0 4px}
+.weeks div{flex:1;border-radius:8px 8px 4px 4px;background:var(--accent-soft)}
+.weeks div.a{background:var(--accent)}
+.set{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.set:last-child{border:0}
+.set .n{width:26px;height:26px;border-radius:50%;background:var(--accent-soft);font-weight:800;font-size:13px;display:grid;place-items:center;color:#B35A24}
+.step{margin-left:auto;display:flex;align-items:center;gap:12px}
+.step span{width:34px;height:34px;border-radius:50%;background:#F3F1EC;display:grid;place-items:center;font-weight:800;font-size:18px}
+.step b{font-size:22px;width:28px;text-align:center}
+.step.done b{color:var(--ink)}
+.wall{position:relative;width:475px;height:751px;border-radius:34px;overflow:hidden;background:linear-gradient(160deg,#5b6b7a,#2d3640 60%,#1c2128);box-shadow:0 8px 30px rgba(0,0,0,.14);color:#fff}
+.w{position:absolute;border-radius:28px;background:rgba(248,246,242,.94);color:var(--ink);padding:14px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+.w b{font-weight:800}
+.glass{position:absolute;left:14px;bottom:20px;right:14px;height:70px;border-radius:30px;background:rgba(255,255,255,.18)}
+.dots{display:flex;gap:8px;margin-top:10px}
+.dots i{flex:1;height:54px;border-radius:18px;background:#F0EEE9;display:grid;place-items:center;font-style:normal;font-size:20px}
+.dots i.on{background:var(--accent);color:#fff}
+</style></head><body>
+<h1>Звички: ескізи</h1>
+<p class="lead">У стилі mindEva (тло #F6F5F2, білі картки, акцент #D9793F, нижня капсула). Екран 475×751, як зовнішній екран Fold.</p>
+
+<div class="row">
+<figure><div class="phone">
+ <div class="status"><span>9:41</span><span>●●● 94%</span></div>
+ <div class="title"><h2>Сьогодні</h2><span>пт, 20 лист.</span></div>
+ <div class="week"><div class="d full">Пн<i></i></div><div class="d full">Вт<i></i></div><div class="d part">Ср<i></i></div><div class="d full">Чт<i></i></div><div class="d today">Пт<i></i></div><div class="d">Сб<i></i></div><div class="d">Нд<i></i></div></div>
+ <div class="cards">
+  <div class="card"><div class="hd"><div class="ic">💧</div><div><b>Вода</b><small>ціль 2 л</small></div><div class="r">1,25 л</div></div><div class="bar"><i style="width:62%"></i></div><div class="btns"><div class="btn">+0,25</div><div class="btn p">+0,5 л</div><div class="btn">↶</div></div></div>
+  <div class="card"><div class="hd"><div class="ic g">💊</div><div><b>Вітаміни: D3 + магній</b><small>після їжі · 08:30</small></div><span class="pill" style="margin-left:auto">залишилось 12</span></div><div class="btns" style="margin-top:10px"><div class="btn g">Прийняв</div></div></div>
+  <div class="card"><div class="hd"><div class="ic">📖</div><div><b>Читання</b><small>ціль 30 хв</small></div><div class="r">18 хв</div></div><div class="bar"><i style="width:60%"></i></div><div class="btns"><div class="btn">+10 хв</div><div class="btn p">▶ таймер</div></div></div>
+  <div class="card"><div class="hd"><div class="ic">🏋️</div><div><b>Підтягування</b><small>минулого разу 7 · 7 · 6</small></div><div class="r">2 з 3</div></div><div class="btns" style="margin-top:10px"><div class="btn p">+ підхід</div></div></div>
+ </div>
+ <div class="dock"><span>🏠</span><span>📅</span><span>📊</span></div><div class="back">‹</div><div class="plus">+</div>
+</div><figcaption><b>1 · Сьогодні</b>Усі звички дня; у кожної своя швидка дія. Смужка тижня: суцільна крапка = усе виконано, світла = частково.</figcaption></figure>
+
+<figure><div class="phone">
+ <div class="status"><span>9:41</span><span>●●● 94%</span></div>
+ <div class="title"><h2>Читання</h2><span>ціль 30 хв щодня</span></div>
+ <div class="cards" style="padding-top:14px">
+  <div class="card"><div class="big">27 <small>з 30 днів</small></div><div style="color:var(--ink2);font-weight:600;font-size:13.5px;margin-top:6px">листопад · серія зараз 5 днів · найкраща 12</div></div>
+  <div class="card"><div style="display:flex;justify-content:space-between;font-weight:800;margin:0 8px 6px"><span>Листопад</span><span style="color:var(--ink3)">‹ ›</span></div>
+   <div class="cal"><b>Пн</b><b>Вт</b><b>Ср</b><b>Чт</b><b>Пт</b><b>Сб</b><b>Нд</b>
+   <i style="visibility:hidden"></i><i style="visibility:hidden"></i><i style="visibility:hidden"></i><i style="visibility:hidden"></i><i style="visibility:hidden"></i><i class="y">1</i><i class="y">2</i>
+   <i class="y">3</i><i class="y">4</i><i class="y">5</i><i class="n">6</i><i class="y">7</i><i class="y">8</i><i class="y">9</i>
+   <i class="y">10</i><i class="y">11</i><i class="y">12</i><i class="y">13</i><i class="y">14</i><i class="n">15</i><i class="y">16</i>
+   <i class="y">17</i><i class="y">18</i><i class="y">19</i><i class="y">20</i><i class="f">21</i><i class="f">22</i><i class="f">23</i>
+   <i class="f">24</i><i class="f">25</i><i class="f">26</i><i class="f">27</i><i class="f">28</i><i class="f">29</i><i class="f">30</i></div></div>
+  <div class="card"><b style="font-size:14px">Останні 4 тижні, хвилини</b><div class="weeks" style="margin-top:12px"><div style="height:55%"></div><div style="height:80%"></div><div style="height:65%"></div><div class="a" style="height:95%"></div></div></div>
+ </div>
+ <div class="dock"><span>🏠</span><span>📅</span><span>📊</span></div><div class="back">‹</div><div class="plus">✎</div>
+</div><figcaption><b>2 · Звичка: місяць</b>«27 з 30», а не ланцюжок. Пропуск це порожня крапка з обідком, а не «зламана серія». Можна відмітити задній день.</figcaption></figure>
+
+<figure><div class="phone">
+ <div class="status"><span>9:41</span><span>●●● 94%</span></div>
+ <div class="title"><h2>Підтягування</h2><span>план 3 × 8</span></div>
+ <div class="cards" style="padding-top:14px">
+  <div class="card"><div style="color:var(--ink2);font-weight:700;font-size:13px">Минулого разу</div><div style="font-size:26px;font-weight:800;margin-top:2px">7 · 7 · 6 <small style="font-size:14px;color:var(--ink2)">разом 20</small></div></div>
+  <div class="card" style="padding-top:6px">
+   <div class="set"><div class="n">1</div><b style="font-size:15px">Підхід</b><div class="step done"><span>−</span><b>8</b><span>+</span></div></div>
+   <div class="set"><div class="n">2</div><b style="font-size:15px">Підхід</b><div class="step done"><span>−</span><b>7</b><span>+</span></div></div>
+   <div class="set"><div class="n" style="background:#F3F1EC;color:var(--ink3)">3</div><b style="font-size:15px;color:var(--ink3)">Підхід</b><div class="step"><span>−</span><b style="color:var(--ink3)">7</b><span>+</span></div></div>
+   <div class="btns" style="margin-top:10px"><div class="btn">↻ як минулого разу</div><div class="btn p">Записати підхід</div></div>
+  </div>
+  <div class="card"><b style="font-size:14px">Найкращий підхід по тижнях</b><div class="weeks" style="margin-top:12px"><div style="height:45%"></div><div style="height:60%"></div><div style="height:75%"></div><div class="a" style="height:90%"></div></div></div>
+ </div>
+ <div class="dock"><span>🏠</span><span>📅</span><span>📊</span></div><div class="back">‹</div><div class="plus">+</div>
+</div><figcaption><b>3 · Підходи й повтори</b>Швидкий запис руками, що ще тремтять: степери й «як минулого разу». План проти факту і прогрес по тижнях. Без тренерських функцій.</figcaption></figure>
+</div>
+
+<div class="row">
+<figure><div class="phone">
+ <div class="status"><span>9:41</span><span>●●● 94%</span></div>
+ <div class="title"><h2>Вітаміни</h2><span>D3 + магній</span></div>
+ <div class="cards" style="padding-top:14px">
+  <div class="card"><div class="hd"><div class="ic g">💊</div><div><b>Запас у пачці</b><small>12 з 30 таблеток</small></div><span class="pill" style="margin-left:auto">докупити до 2 груд.</span></div><div class="bar"><i style="width:40%;background:var(--green)"></i></div></div>
+  <div class="card"><b>Розклад</b>
+   <div class="set"><div class="n">1</div><div><b style="font-size:15px">08:30 · 1 таблетка</b><div style="color:var(--ink2);font-size:12.5px;font-weight:600">після їжі, з жирним</div></div><div style="margin-left:auto" class="pill">прийнято сьогодні ✓</div></div>
+   <div class="set"><div class="n">2</div><div><b style="font-size:15px">21:00 · 1 таблетка</b><div style="color:var(--ink2);font-size:12.5px;font-weight:600">магній, перед сном</div></div><div style="margin-left:auto;color:var(--ink3);font-weight:800;font-size:13px">ще не час</div></div>
+  </div>
+  <div class="card"><b style="font-size:14px">Історія</b><div style="color:var(--ink2);font-size:13px;margin-top:6px;line-height:1.7">20 лист. 08:30 ✓ · 19 лист. 08:40 ✓ · 18 лист. пропущено · 17 лист. 08:30 ✓</div></div>
+ </div>
+ <div class="dock"><span>🏠</span><span>📅</span><span>📊</span></div><div class="back">‹</div><div class="plus">✎</div>
+</div><figcaption><b>4 · Прийом із запасом</b>Таблетки віднімаються самі, показано, коли докупити. Примітки («після їжі», «з жирним»). «Вже прийнято сьогодні» як запобіжник від подвійної дози.</figcaption></figure>
+
+<figure><div class="wall">
+ <div style="padding:60px 26px 0;font-size:56px;font-weight:700;letter-spacing:-.02em">9:41</div>
+ <div style="padding:0 26px;opacity:.7;font-weight:700">пʼятниця, 20 листопада</div>
+ <div class="w" style="left:20px;top:200px;width:215px;height:215px"><div style="display:flex;justify-content:space-between;font-size:13px;color:var(--ink2);font-weight:700"><span>💧 Вода</span><span>ціль 2 л</span></div><div style="font-size:38px;font-weight:800;margin-top:8px">1,25 л</div><div class="bar" style="margin:8px 0"><i style="width:62%"></i></div><div class="btns"><div class="btn" style="padding:12px 0">+0,25</div><div class="btn p" style="padding:12px 0">+0,5</div></div></div>
+ <div class="w" style="left:250px;top:200px;width:205px;height:215px"><div style="font-size:13px;color:var(--ink2);font-weight:700">💊 Вітаміни</div><div style="font-size:19px;font-weight:800;margin-top:8px">D3 + магній</div><div style="font-size:12.5px;color:var(--ink2);font-weight:600;margin-top:2px">після їжі · лишилось 12</div><div class="btn g" style="margin-top:34px;padding:14px 0;border-radius:18px">Прийняв ✓</div></div>
+ <div class="w" style="left:20px;top:435px;width:435px;height:130px"><div style="font-size:13px;color:var(--ink2);font-weight:700">Сьогодні · 3 з 5</div><div class="dots"><i class="on">💧</i><i class="on">💊</i><i>📖</i><i>🏋️</i><i>🌙</i></div></div>
+ <div class="glass"></div>
+</div><figcaption><b>5 · Віджети на головному екрані</b>Вода з двома кнопками, «Прийняв» для вітамінів, ряд із 5 звичок одним тапом. Відмітка без відкриття застосунку.</figcaption></figure>
+</div>
+</body></html>

@@ -1,0 +1,23 @@
+// WHAT A PANE CAN HOLD: the databases a wide screen opens beside the board
+// (the databases screen's own pane) and the laptop's side panels both
+// hold one of these. The tabs (documents, boards) are whole screens with
+// their own two-pane logic, `inPane` tells them not to split again.
+export type PaneTarget =
+  | { kind: 'custom'; databaseId: string }
+  | { kind: 'links'; category: 'video' | 'geo' | 'other' }
+  | { kind: 'documents' }
+  | { kind: 'boards' }
+  // The three registries - the diary, the groups and the tags - open in
+  // the pane like every other database now. They are not lists of records
+  // and carry no chrome of their own; see PlainScreenShell.
+  | { kind: 'route'; route: 'Photos' | 'Files' | 'Stickers' | 'Flashcards' | 'Tasks' | 'Tags' | 'Groups' | 'Diary' | 'Chat' }
+  // A note in a window of its own (the Mac's «У вікно», frame B 2026-10-19) - never a pane's content.
+  | { kind: 'note'; documentId: string }
+  // A board in a window of its own (2026-10-30), next to the explorer's window.
+  | { kind: 'board'; boardId: string }
+  // A folder of the explorer in a window of its own (2026-10-31): the explorer standing at that path.
+  | { kind: 'folder'; path: string }
+  // A photo or a file in a window of its own: its base, with that one opened on arrival.
+  | { kind: 'item'; collection: 'photos' | 'files'; id: string };
+
+export const sameTarget = (a: PaneTarget, b: PaneTarget) => JSON.stringify(a) === JSON.stringify(b);
