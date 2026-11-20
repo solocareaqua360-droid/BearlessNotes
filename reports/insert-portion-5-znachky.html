@@ -1,0 +1,63 @@
+<!doctype html><html lang="uk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Порція 5 · правило значків</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"><style>
+:root{--bg:#F6F5F2;--ink:#1E1E1C;--ink2:#6E6D68;--ink3:#A9A79F;--fill:#F4F4F3;--solid:#EBEAE7;--acc:#D9793F;--line:rgba(30,30,28,.08)}
+*{box-sizing:border-box}body{margin:0;background:#E3E1DC;font-family:Inter,system-ui,sans-serif;color:var(--ink);padding:22px 16px}
+h1{font-size:18px;margin:0 0 6px}.lead{font-size:14px;color:#5E5D58;max-width:1000px;line-height:1.5;margin:0 0 18px}
+h2{font-size:15px;margin:26px 0 10px;color:#5E5D58;text-transform:uppercase;letter-spacing:.4px}
+.row{display:flex;flex-wrap:wrap;gap:22px;align-items:flex-start}
+.cell{width:475px}.ft{font-size:12px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:#5E5D58;margin:0 4px 6px}
+.cap{font-size:13px;color:#5E5D58;margin:8px 4px 0;line-height:1.45}
+.fr{width:475px;height:751px;position:relative;overflow:hidden;border-radius:26px;box-shadow:0 10px 30px rgba(0,0,0,.14);background-size:475px 751px;background-repeat:no-repeat;background-color:#fff}
+.ab{position:absolute}
+.bd{position:absolute;width:20px;height:20px;border-radius:50%;background:#D6402F;color:#fff;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.3);z-index:20}
+.pop{position:absolute;background:#fff;border-radius:22px;box-shadow:0 0 0 .5px rgba(30,30,28,.12),0 1px 2px rgba(30,30,28,.06),0 18px 40px -14px rgba(30,30,28,.32);overflow:hidden;font-family:Inter,system-ui,-apple-system,sans-serif}
+.hd{display:flex;align-items:center;gap:8px;padding:11px 16px 4px;font-size:13px;color:#A9A79F}
+.hd b{color:#1E1E1C;font-weight:500;font-size:15px}
+.sh{font-size:11px;font-weight:600;letter-spacing:.5px;color:#A9A79F;text-transform:uppercase;padding:9px 16px 3px}
+.it{display:flex;align-items:center;gap:12px;padding:5px 16px;font-size:15px;font-weight:500}.it.on{background:#F4F4F3}
+.it small{margin-left:auto;font-size:12px;color:#A9A79F;font-weight:400}
+.ic{width:34px;height:34px;border-radius:11px;background:#F4F4F3;display:flex;align-items:center;justify-content:center;flex:none}.it.on .ic{background:#fff;box-shadow:0 0 0 1px rgba(30,30,28,.06)}
+.chips{display:flex;gap:6px;padding:10px 14px 6px}.chip{flex:none;border-radius:999px;background:#EBEAE7;padding:6px 12px;font-size:13px;font-weight:500;color:#6E6D68}.chip.on{background:#1E1E1C;color:#fff}
+.tl2{display:flex;align-items:center;gap:10px;height:46px;border-radius:15px;background:#F4F4F3;padding:0 12px;font-size:14.5px;font-weight:500}.tl2 .mp{flex:none}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.shl{font-size:11.5px;font-weight:600;letter-spacing:.5px;color:#A9A79F;text-transform:uppercase;margin:12px 4px 6px}
+.vt{display:grid;grid-template-columns:1fr 1fr;gap:10px}.vt div{background:#fff;border-radius:20px;height:112px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;font-size:13.5px;font-weight:500;box-shadow:0 0 0 1px rgba(30,30,28,.08),0 4px 14px rgba(30,30,28,.06)}.vt div.cur{box-shadow:0 0 0 2px #1E1E1C}
+.box{border-radius:18px;background:#fff;padding:12px 14px;margin-bottom:12px;font-size:14.5px;line-height:1.45;box-shadow:0 4px 18px rgba(30,30,28,.06)}.box b{display:block;font-size:15px;margin-bottom:3px}.box small{font-size:12.5px;color:#6E6D68;display:block}
+.bigstrip{width:950px;height:99px;border-radius:14px;background-size:950px 1501px;background-position:0 -843px;background-repeat:no-repeat;position:relative;overflow:hidden;box-shadow:0 6px 20px rgba(0,0,0,.12)}
+.bigstrip .ab{}
+.mp{width:24px;height:22px;display:inline-block;position:relative;vertical-align:middle}
+.mp::before,.mp::after{content:'';position:absolute}
+.mp.text{background:linear-gradient(#9A988F,#9A988F) 0 3px/100% 2px no-repeat,linear-gradient(#9A988F,#9A988F) 0 10px/100% 2px no-repeat,linear-gradient(#9A988F,#9A988F) 0 17px/62% 2px no-repeat}
+.mp.h{background:linear-gradient(#1E1E1C,#1E1E1C) 0 1px/74% 6px no-repeat,linear-gradient(#9A988F,#9A988F) 0 12px/100% 2px no-repeat,linear-gradient(#9A988F,#9A988F) 0 18px/64% 2px no-repeat}
+.mp.h3{background:linear-gradient(#1E1E1C,#1E1E1C) 0 2px/60% 4px no-repeat,linear-gradient(#9A988F,#9A988F) 0 12px/100% 2px no-repeat,linear-gradient(#9A988F,#9A988F) 0 18px/64% 2px no-repeat}
+.mp.ul{background:radial-gradient(circle,#5E5D58 2px,transparent 2.4px) 0 2px/6px 7px no-repeat,radial-gradient(circle,#5E5D58 2px,transparent 2.4px) 0 9px/6px 7px no-repeat,linear-gradient(#9A988F,#9A988F) 8px 4px/16px 2px no-repeat,linear-gradient(#9A988F,#9A988F) 8px 11px/16px 2px no-repeat,linear-gradient(#9A988F,#9A988F) 8px 18px/11px 2px no-repeat}
+.mp.ol{background:linear-gradient(#5E5D58,#5E5D58) 0 3px/5px 2px no-repeat,linear-gradient(#5E5D58,#5E5D58) 0 10px/5px 2px no-repeat,linear-gradient(#5E5D58,#5E5D58) 0 17px/5px 2px no-repeat,linear-gradient(#9A988F,#9A988F) 8px 3px/16px 2px no-repeat,linear-gradient(#9A988F,#9A988F) 8px 10px/16px 2px no-repeat,linear-gradient(#9A988F,#9A988F) 8px 17px/12px 2px no-repeat}
+.mp.cbx{background:linear-gradient(#9A988F,#9A988F) 13px 4px/11px 2px no-repeat,linear-gradient(#9A988F,#9A988F) 13px 15px/11px 2px no-repeat}
+.mp.cbx::before{left:0;top:2px;width:9px;height:9px;border:1.5px solid #5E5D58;border-radius:3px;background:#5E5D58;box-sizing:border-box}
+.mp.cbx::after{left:0;top:13px;width:9px;height:9px;border:1.5px solid #9A988F;border-radius:3px;box-sizing:border-box}
+.mp.tg{background:linear-gradient(#5E5D58,#5E5D58) 9px 3px/14px 2px no-repeat,linear-gradient(#9A988F,#9A988F) 9px 11px/12px 2px no-repeat,linear-gradient(#9A988F,#9A988F) 9px 17px/9px 2px no-repeat}
+.mp.tg::before{left:0;top:1px;border:5px solid transparent;border-top:7px solid #5E5D58;border-bottom:0}
+.mp.rs{background:linear-gradient(#5E5D58,#5E5D58) 0 10px/100% 2px no-repeat}
+.mp.rd{background:repeating-linear-gradient(90deg,#5E5D58 0 3px,transparent 3px 6px) 0 10px/100% 2px no-repeat}
+.mp.rb{background:linear-gradient(#1E1E1C,#1E1E1C) 0 8px/100% 6px no-repeat}
+.mp.img{border-radius:4px;background:radial-gradient(circle at 17px 6px,#F3C9B5 3px,transparent 3.5px),linear-gradient(135deg,transparent 52%,#A9D3B9 52%),#E3EAFB;box-shadow:inset 0 0 0 1.5px #9A988F}
+.mp.cam{border-radius:5px;box-shadow:inset 0 0 0 1.5px #5E5D58}.mp.cam::before{left:7px;top:5px;width:10px;height:10px;border-radius:50%;border:2px solid #5E5D58}
+.mp.sk::before{left:1px;top:4px;width:22px;height:12px;border-bottom:2px solid #5E5D58;border-radius:0 0 50% 50%;transform:rotate(-12deg)}
+.mp.tbl{box-shadow:inset 0 0 0 1.5px #9A988F;border-radius:3px;background:linear-gradient(#9A988F,#9A988F) 50% 0/1.5px 100% no-repeat,linear-gradient(#9A988F,#9A988F) 0 50%/100% 1.5px no-repeat}
+.mp.code{background:#2E2F33;border-radius:4px;background-image:linear-gradient(#C9C7BF,#C9C7BF),linear-gradient(#C9C7BF,#C9C7BF);background-size:9px 2px,14px 2px;background-position:4px 6px,8px 12px;background-repeat:no-repeat}
+.mp.file{border-radius:3px 8px 3px 3px;box-shadow:inset 0 0 0 1.5px #5E5D58;width:18px;background:linear-gradient(#9A988F,#9A988F) 3px 9px/10px 2px no-repeat,linear-gradient(#9A988F,#9A988F) 3px 14px/7px 2px no-repeat}
+.mp.scan{border:2px dashed #5E5D58;border-radius:3px;width:20px}
+.mp.word{width:34px;background:linear-gradient(#9A988F,#9A988F) 0 11px/9px 2px no-repeat}
+.mp.word::before{left:11px;top:5px;width:22px;height:13px;border-radius:5px;background:#E3EAFB}
+.mp.word::after{content:'↗';left:14px;top:3px;font-size:10px;color:#2563EB;font-weight:700}
+.mp.card{width:30px;height:24px;border-radius:5px;box-shadow:inset 0 0 0 1.5px #9A988F;background:linear-gradient(#1E1E1C,#1E1E1C) 4px 4px/14px 3px no-repeat,linear-gradient(#9A988F,#9A988F) 4px 11px/22px 2px no-repeat,linear-gradient(#9A988F,#9A988F) 4px 16px/16px 2px no-repeat}
+.mp.rec{border-radius:4px;box-shadow:inset 0 0 0 1.5px #9A988F;background:linear-gradient(#9A988F,#9A988F) 3px 5px/8px 2px no-repeat,linear-gradient(#9A988F,#9A988F) 3px 10px/18px 2px no-repeat,linear-gradient(#9A988F,#9A988F) 3px 15px/14px 2px no-repeat}
+.mp.big{transform:scale(1.7)}
+.mp.indl{background:linear-gradient(#9A988F,#9A988F) 8px 3px/16px 2px no-repeat,linear-gradient(#9A988F,#9A988F) 8px 10px/16px 2px no-repeat,linear-gradient(#9A988F,#9A988F) 8px 17px/16px 2px no-repeat}
+.mp.indl::before{left:0;top:5px;border:5px solid transparent;border-right:7px solid #5E5D58;border-left:0}
+.mp.indr{background:linear-gradient(#9A988F,#9A988F) 8px 3px/16px 2px no-repeat,linear-gradient(#9A988F,#9A988F) 8px 10px/16px 2px no-repeat,linear-gradient(#9A988F,#9A988F) 8px 17px/16px 2px no-repeat}
+.mp.indr::before{left:0;top:5px;border:5px solid transparent;border-left:7px solid #5E5D58;border-right:0}
+.mp.al{background:linear-gradient(#5E5D58,#5E5D58) 0 3px/100% 2px no-repeat,linear-gradient(#9A988F,#9A988F) 0 10px/60% 2px no-repeat,linear-gradient(#5E5D58,#5E5D58) 0 17px/80% 2px no-repeat}
+.mp.ac{background:linear-gradient(#5E5D58,#5E5D58) 0 3px/100% 2px no-repeat,linear-gradient(#9A988F,#9A988F) 20% 10px/60% 2px no-repeat,linear-gradient(#5E5D58,#5E5D58) 10% 17px/80% 2px no-repeat}
+.mp.ar{background:linear-gradient(#5E5D58,#5E5D58) 0 3px/100% 2px no-repeat,linear-gradient(#9A988F,#9A988F) 100% 10px/60% 2px no-repeat,linear-gradient(#5E5D58,#5E5D58) 100% 17px/80% 2px no-repeat}
+.mp.aj{background:linear-gradient(#5E5D58,#5E5D58) 0 3px/100% 2px no-repeat,linear-gradient(#9A988F,#9A988F) 0 10px/100% 2px no-repeat,linear-gradient(#5E5D58,#5E5D58) 0 17px/100% 2px no-repeat}
+</style></head><body><h1>Порція 5 · правило значків</h1><h2>Правило значків</h2><div class="row"><div class="cell"><div class="fr" style="background:#F6F5F2"><div class="ab" style="left:20px;right:20px;top:60px"><div class="box"><b>＋ створити нове</b><small>Нова нотатка, новий запис у базі, новий блок. Тільки створення.</small></div><div class="box"><b>лупа — пошук</b><small>Тільки пошук по тому, що відкрито: Старт, база, нотатка. Ніякої вибірки й вставки.</small></div><div class="box"><b>@ — послатись на існуюче</b><small>Нотатка, файл, фото, запис бази: слово-посилання в тексті.</small></div><div class="box"><b>/ — вставити блок</b><small>Каталог блоків із полицями й пошуком.</small></div><div class="box" style="background:#EBEAE7;box-shadow:none"><b>Усе інше — малюнок + підпис</b><small>Плитки з мініатюрою того, що вийде (як у ШІ-чаті й «Вигляді» виділення).</small></div></div></div><p class="cap">Чотири універсальні значки мають одне значення. Усе інше показуємо малюнком із підписом.</p></div></div></body></html>
