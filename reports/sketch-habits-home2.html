@@ -1,0 +1,61 @@
+<!doctype html><html lang="uk"><head><meta charset="utf-8"><title>Звички: ще три головні екрани</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&family=Outfit:wght@300;500;700&display=swap">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#bfb9ad;padding:24px;font-family:system-ui}
+.row{display:flex;gap:22px}figure{margin:0;width:475px}figcaption{font-size:13.5px;color:#444;margin-top:10px;line-height:1.4}figcaption b{display:block;color:#111;font-size:15px}
+.ph{position:relative;width:475px;height:751px;border-radius:38px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.2)}
+.st{position:absolute;top:16px;left:28px;right:28px;display:flex;justify-content:space-between;font-size:12px;z-index:5}
+/* D garden */
+.D{background:linear-gradient(#f6f0de,#dfe9cf);font-family:"Quicksand",sans-serif;color:#3b3a28}
+.D h2{margin:0;position:absolute;left:26px;top:48px;font-size:32px}.D .sub{position:absolute;left:26px;top:92px;font-size:14px;opacity:.65;font-weight:700}
+.shelf{position:absolute;left:18px;right:18px;display:flex;justify-content:space-around;align-items:flex-end}
+.shelf::after{content:"";position:absolute;left:-8px;right:-8px;bottom:-42px;height:14px;border-radius:7px;background:#b98a5e;box-shadow:0 8px 14px rgba(90,60,30,.2)}
+.pot{width:118px;text-align:center;position:relative}.pot svg{display:block;margin:0 auto}.pot b{display:block;font-size:14px;margin-top:6px}.pot span{font-size:12px;opacity:.65;font-weight:700}
+.dockD{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);width:300px;height:60px;border-radius:30px 8px 30px 8px;background:#3f5b3a;display:flex;justify-content:space-around;align-items:center;color:#e8f0d8;font-size:22px;box-shadow:0 8px 22px rgba(40,70,40,.4)}
+/* E grid */
+.E{background:#fafaf7;font-family:"IBM Plex Mono",monospace;color:#111}
+.E .big{position:absolute;left:24px;top:46px;font-size:58px;font-weight:600;letter-spacing:-.06em;line-height:1}.E .sub{position:absolute;left:26px;top:112px;font-size:12px;color:#777;letter-spacing:.06em}
+.E .r{position:absolute;left:24px;right:24px;border-top:1px solid #111;padding-top:10px}
+.E .r b{font-size:19px;font-weight:500;letter-spacing:-.02em}.E .r em{position:absolute;right:0;top:10px;font-style:normal;font-size:13px}
+.E .sq{display:flex;gap:4px;margin-top:10px}.E .sq i{width:11px;height:11px;background:#111;display:block}.E .sq i.o{background:transparent;border:1.5px solid #111}.E .sq i.f{background:#ddd}.E .sq i.t{background:#ff4d1a}
+.E .nav{position:absolute;left:24px;right:24px;bottom:26px;display:flex;justify-content:space-between;font-size:13px;border-top:1px solid #111;padding-top:12px}.E .nav u{text-decoration:underline;text-underline-offset:4px}
+/* F orbit */
+.F{background:radial-gradient(120% 90% at 50% 0%,#ffb88a 0%,#c9588f 40%,#2b1d5a 85%);font-family:"Outfit",sans-serif;color:#fff}
+.F .t{position:absolute;top:50px;left:0;right:0;text-align:center}.F .t b{font-size:60px;font-weight:300;letter-spacing:-.03em;display:block;line-height:1}.F .t span{font-size:14px;opacity:.8}
+.orb{position:absolute;border-radius:50%;display:grid;place-items:center;text-align:center;backdrop-filter:blur(8px)}
+.orb b{display:block;font-size:15px;font-weight:700}.orb span{font-size:12px;opacity:.85}
+.dockF{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);display:flex;gap:16px;align-items:center}.dockF i{width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.18);display:grid;place-items:center;font-style:normal;font-size:18px}.dockF i.m{width:64px;height:64px;background:#fff;color:#2b1d5a;font-size:30px;font-weight:300}
+</style></head><body><div class="row">
+
+<figure><div class="ph D"><div class="st"><span>9:41</span><span>94%</span></div><h2>Сьогодні</h2><div class="sub">пʼятниця · ваш сад росте</div>
+<div class="shelf" style="top:150px">
+<div class="pot"><svg width="110" height="150" viewBox="0 0 110 150"><path d="M55 96 C55 70 52 60 40 46 M55 96 C55 66 62 54 78 42" stroke="#4f8a4a" stroke-width="5" fill="none" stroke-linecap="round"/><ellipse cx="40" cy="42" rx="16" ry="9" fill="#6fae63" transform="rotate(-30 40 42)"/><ellipse cx="80" cy="38" rx="16" ry="9" fill="#6fae63" transform="rotate(30 80 38)"/><ellipse cx="55" cy="60" rx="12" ry="7" fill="#82c274"/><path d="M26 98 L84 98 L78 142 L32 142Z" fill="#c9764a"/><rect x="22" y="92" width="66" height="12" rx="4" fill="#d9885a"/></svg><b>Вода</b><span>1,25 з 2 л</span></div>
+<div class="pot"><svg width="110" height="150" viewBox="0 0 110 150"><path d="M55 96 C55 60 55 40 55 22" stroke="#4f8a4a" stroke-width="5" fill="none" stroke-linecap="round"/><circle cx="55" cy="18" r="13" fill="#f2a6c0"/><circle cx="55" cy="18" r="5" fill="#ffe08a"/><ellipse cx="38" cy="62" rx="15" ry="8" fill="#6fae63" transform="rotate(-25 38 62)"/><ellipse cx="72" cy="52" rx="15" ry="8" fill="#6fae63" transform="rotate(25 72 52)"/><path d="M26 98 L84 98 L78 142 L32 142Z" fill="#c9764a"/><rect x="22" y="92" width="66" height="12" rx="4" fill="#d9885a"/></svg><b>Вітаміни</b><span>прийнято ✓</span></div>
+<div class="pot"><svg width="110" height="150" viewBox="0 0 110 150"><path d="M55 96 C55 80 55 70 55 62" stroke="#4f8a4a" stroke-width="5" fill="none" stroke-linecap="round"/><ellipse cx="46" cy="62" rx="12" ry="7" fill="#82c274" transform="rotate(-30 46 62)"/><ellipse cx="64" cy="60" rx="12" ry="7" fill="#82c274" transform="rotate(30 64 60)"/><path d="M26 98 L84 98 L78 142 L32 142Z" fill="#c9764a"/><rect x="22" y="92" width="66" height="12" rx="4" fill="#d9885a"/></svg><b>Читання</b><span>18 з 30 хв</span></div></div>
+<div class="shelf" style="top:380px">
+<div class="pot"><svg width="110" height="150" viewBox="0 0 110 150"><path d="M55 96 C55 88 55 84 55 80" stroke="#4f8a4a" stroke-width="4" fill="none" stroke-linecap="round"/><ellipse cx="55" cy="78" rx="8" ry="5" fill="#9bd08c"/><path d="M26 98 L84 98 L78 142 L32 142Z" fill="#c9764a"/><rect x="22" y="92" width="66" height="12" rx="4" fill="#d9885a"/></svg><b>Підтягування</b><span>1 з 3 підходів</span></div>
+<div class="pot"><svg width="110" height="150" viewBox="0 0 110 150"><path d="M26 98 L84 98 L78 142 L32 142Z" fill="#c9764a" opacity=".55"/><rect x="22" y="92" width="66" height="12" rx="4" fill="#d9885a" opacity=".55"/><text x="55" y="80" text-anchor="middle" font-size="26" opacity=".5">🌱</text></svg><b>Вечір</b><span>увечері</span></div>
+<div class="pot"><svg width="110" height="150" viewBox="0 0 110 150"><path d="M55 96 C54 70 52 54 46 36 M55 96 C56 66 60 50 70 30" stroke="#4f8a4a" stroke-width="5" fill="none" stroke-linecap="round"/><ellipse cx="44" cy="40" rx="14" ry="8" fill="#6fae63" transform="rotate(-35 44 40)"/><ellipse cx="72" cy="34" rx="14" ry="8" fill="#6fae63" transform="rotate(35 72 34)"/><ellipse cx="55" cy="62" rx="13" ry="7" fill="#82c274"/><path d="M26 98 L84 98 L78 142 L32 142Z" fill="#c9764a"/><rect x="22" y="92" width="66" height="12" rx="4" fill="#d9885a"/></svg><b>Ходьба</b><span>5 200 кроків</span></div></div>
+<div class="dockD"><span>🌿</span><span>📅</span><span style="font-size:30px;line-height:1">＋</span></div></div>
+<figcaption><b>Сад</b>Кожна звичка це рослина в горщику: що більше зроблено, то вона вища, зацвітає. Без жодних кнопок. Торкнувся горщика, відкрилась його сторінка. Док це листок.</figcaption></figure>
+
+<figure><div class="ph E"><div class="st"><span>9:41</span><span>94%</span></div><div class="big">20.11</div><div class="sub">ПʼЯТНИЦЯ · 3 З 6 ЗРОБЛЕНО</div>
+<div class="r" style="top:150px"><b>Вода</b><em>1,25/2 л</em><div class="sq"><i></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="t"></i><i class="f"></i><i class="f"></i></div></div>
+<div class="r" style="top:236px"><b>Вітаміни</b><em>✓</em><div class="sq"><i></i><i></i><i></i><i></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="f"></i><i class="f"></i></div></div>
+<div class="r" style="top:322px"><b>Читання</b><em>18/30 хв</em><div class="sq"><i></i><i class="o"></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="t"></i><i class="f"></i><i class="f"></i></div></div>
+<div class="r" style="top:408px"><b>Підтягування</b><em>1/3</em><div class="sq"><i></i><i class="o"></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i><i></i><i></i><i class="t"></i><i class="f"></i></div></div>
+<div class="r" style="top:494px"><b>Вечір</b><em>—</em><div class="sq"><i></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="t"></i><i class="f"></i><i class="f"></i></div></div>
+<div class="r" style="top:580px"><b>Ходьба</b><em>5 200</em><div class="sq"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="f"></i><i class="f"></i></div></div>
+<div class="nav"><u>Сьогодні</u><span>Огляд</span><span>+ нова</span></div></div>
+<figcaption><b>Сітка</b>Редакційний мінімалізм: біла сторінка, моноширинний шрифт, у кожного рядка 25 квадратиків (останні дні), сьогодні помаранчевий. Нуль кнопок і ілюстрацій, лише дані. Док це три слова внизу.</figcaption></figure>
+
+<figure><div class="ph F"><div class="st"><span>9:41</span><span>94%</span></div><div class="t"><b>3 з 6</b><span>пʼятниця · сонце вже високо</span></div>
+<div class="orb" style="left:40px;top:170px;width:190px;height:190px;background:rgba(255,255,255,.2);box-shadow:inset 0 0 0 6px rgba(255,255,255,.55)"><div><div style="font-size:32px">💧</div><b>Вода</b><span>1,25 з 2 л</span></div></div>
+<div class="orb" style="left:262px;top:150px;width:140px;height:140px;background:rgba(255,236,160,.4);box-shadow:inset 0 0 0 6px #ffe9a3"><div><div style="font-size:26px">💊</div><b>Вітаміни</b><span>✓</span></div></div>
+<div class="orb" style="left:285px;top:312px;width:150px;height:150px;background:rgba(255,255,255,.16);box-shadow:inset 0 0 0 5px rgba(255,255,255,.5)"><div><div style="font-size:26px">📖</div><b>Читання</b><span>18 з 30 хв</span></div></div>
+<div class="orb" style="left:70px;top:385px;width:120px;height:120px;background:rgba(255,255,255,.12);box-shadow:inset 0 0 0 4px rgba(255,255,255,.35)"><div><div style="font-size:22px">🏋️</div><b>Підтягув.</b><span>1/3</span></div></div>
+<div class="orb" style="left:215px;top:480px;width:110px;height:110px;background:rgba(255,255,255,.1);box-shadow:inset 0 0 0 3px rgba(255,255,255,.25)"><div><div style="font-size:22px">🌙</div><b>Вечір</b></div></div>
+<div class="orb" style="left:350px;top:490px;width:90px;height:90px;background:rgba(255,255,255,.16);box-shadow:inset 0 0 0 4px rgba(255,255,255,.5)"><div><div style="font-size:20px">🚶</div><b style="font-size:12px">Ходьба</b></div></div>
+<div class="dockF"><i>◔</i><i class="m">+</i><i>▤</i></div></div>
+<figcaption><b>Світло</b>Небо змінюється впродовж дня (ранок, день, вечір). Звички це «кульки» різного розміру, обідок заповнюється, чим більше зроблено. Нуль кнопок, велика кулька = важлива. Док це три кулі.</figcaption></figure>
+</div></body></html>
