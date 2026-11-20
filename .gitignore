@@ -11,3 +11,6 @@ web-build/
 *.mobileprovision
 .env
 .env.local
+build-*.apk
+*.apk
+android/

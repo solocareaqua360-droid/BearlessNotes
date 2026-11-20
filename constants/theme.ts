@@ -1,38 +1,5 @@
-export const colors = {
-  background: "#F2F2F5",
-  surface: "#FFFFFF",
-  surfaceElevated: "#E9E9EE",
-  border: "#EFEFF2",
-  textPrimary: "#1C1C1E",
-  textSecondary: "#6E6E73",
-  textMuted: "#9A9AA0",
-  accent: "#FF5C38",
-  accentSoft: "rgba(255, 92, 56, 0.16)",
-  pillInactive: "#E9E9EE",
-  neutralActive: "#DEDEE2",
-  iconDark: "#3A3A3C",
-  searchIcon: "#7C6CFF",
-  success: "#4CD97B",
-  danger: "#E0453C",
-};
-
-export const spacing = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 24,
-  xxl: 32,
-};
-
-export const radius = {
-  sm: 12,
-  md: 20,
-  lg: 28,
-  sheet: 32,
-  pill: 999,
-};
-
+// A tag's colour and icon are CONTENT - the one place bright colours are
+// allowed. The interface itself is theme/soft.ts.
 export const tagPalette = [
   "#FF5C38",
   "#FFB020",

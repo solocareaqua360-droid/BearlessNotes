@@ -55,6 +55,7 @@ function rowToVideo(row: any): Video {
     tagIds: row.tag_ids ?? [],
     comment: row.comment ?? "",
     createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+    updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : undefined,
   };
 }
 
@@ -92,9 +93,11 @@ export async function pullRemoteIntoLocal(userId: string) {
   if (tagsError) throw new Error(`[pull:tags] ${errorMessage(tagsError)}`);
   if (videosError) throw new Error(`[pull:videos] ${errorMessage(videosError)}`);
 
+  // siteName is not a Supabase column: keep what this device already knows.
+  const known = new Map(useLibraryStore.getState().videos.map((v) => [v.id, v.siteName]));
   useLibraryStore.setState({
     tags: (tagRows ?? []).map(rowToTag),
-    videos: (videoRows ?? []).map(rowToVideo),
+    videos: (videoRows ?? []).map((row) => ({ ...rowToVideo(row), siteName: known.get(row.id) })),
   });
 }
 

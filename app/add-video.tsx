@@ -1,26 +1,29 @@
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@/components/icons/Ionicons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import { StatusToggle } from "@/components/StatusToggle";
 import { TagsDrawer } from "@/components/TagsDrawer";
-import { colors, radius, spacing } from "@/constants/theme";
+import { Field, SheetScreen } from "@/components/ui/SheetScreen";
+import { FONT, softCursor, TYPE, useScheme, useSoft } from "@/theme/soft";
 import { fetchVideoMeta, VideoMeta } from "@/services/videoMeta";
 import { useLibraryStore } from "@/store/useLibraryStore";
 import { WatchStatus } from "@/types";
+import { extractUrl } from "@/utils/shareLink";
 
 const META_FETCH_DEBOUNCE_MS = 500;
 
 export default function AddVideoScreen() {
+  const S = useSoft();
+  const scheme = useScheme();
   const { sharedUrl } = useLocalSearchParams<{ sharedUrl?: string }>();
   const tags = useLibraryStore((s) => s.tags);
   const videos = useLibraryStore((s) => s.videos);
   const addVideo = useLibraryStore((s) => s.addVideo);
   const removeTag = useLibraryStore((s) => s.removeTag);
 
-  const [url, setUrl] = useState(sharedUrl ?? "");
+  const [url, setUrl] = useState(extractUrl(sharedUrl) ?? sharedUrl ?? "");
   const [meta, setMeta] = useState<VideoMeta | null>(null);
   const [status, setStatus] = useState<WatchStatus>("planned");
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
@@ -30,7 +33,7 @@ export default function AddVideoScreen() {
   const latestRequestUrl = useRef<string | null>(null);
 
   useEffect(() => {
-    if (sharedUrl) setUrl(sharedUrl);
+    if (sharedUrl) setUrl(extractUrl(sharedUrl) ?? sharedUrl);
   }, [sharedUrl]);
 
   useEffect(() => {
@@ -64,6 +67,8 @@ export default function AddVideoScreen() {
       thumbnailUrl: meta?.thumbnailUrl ?? "",
       durationSec: meta?.durationSec ?? 0,
       source: meta?.source ?? "unknown",
+      siteName: meta?.siteName ?? "",
+      updatedAt: Date.now(),
       status,
       tagIds: selectedTagIds,
       comment: "",
@@ -72,185 +77,83 @@ export default function AddVideoScreen() {
     router.back();
   };
 
+  const selectedNames = tags.filter((t) => selectedTagIds.includes(t.id)).map((t) => t.name);
+
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()}>
-          <Text style={styles.headerAction}>Скасувати</Text>
-        </Pressable>
-        <Text style={styles.headerTitle}>Нове відео</Text>
-        <Pressable onPress={handleSave} disabled={!url.trim()}>
-          <Text style={[styles.headerAction, styles.headerSave, !url.trim() && styles.disabled]}>
-            Зберегти
-          </Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.content}>
-        <TextInput
-          value={url}
-          onChangeText={setUrl}
-          placeholder="Встав посилання на YouTube або TikTok"
-          placeholderTextColor={colors.textMuted}
-          style={styles.input}
-          autoCapitalize="none"
-          autoCorrect={false}
+    <SheetScreen
+      title="Нове відео"
+      doneLabel="Зберегти"
+      onDone={handleSave}
+      doneDisabled={!url.trim()}
+      overlay={
+        <TagsDrawer
+          visible={tagsDrawerVisible}
+          onClose={() => setTagsDrawerVisible(false)}
+          tags={tags}
+          videos={videos}
+          selectedTagIds={selectedTagIds}
+          onChangeSelectedTagIds={setSelectedTagIds}
+          onCreateTag={() => {
+            setTagsDrawerVisible(false);
+            router.push("/tag-editor");
+          }}
+          onEditTag={(tagId) => {
+            setTagsDrawerVisible(false);
+            router.push(`/tag-editor?tagId=${tagId}`);
+          }}
+          onReparentTag={(tagId) => {
+            setTagsDrawerVisible(false);
+            router.push(`/tag-reparent?tagId=${tagId}`);
+          }}
+          onDeleteTag={(tagId, mode) => removeTag(tagId, mode)}
+          onBulkReparentTags={(tagIds) => {
+            setTagsDrawerVisible(false);
+            router.push(`/tag-reparent?tagIds=${tagIds.join(",")}`);
+          }}
+          confirmLabel="Готово"
         />
-
-        {(meta || loading) && (
-          <View style={styles.previewCard}>
-            <View style={styles.previewThumbWrap}>
-              {meta?.thumbnailUrl ? (
-                <Image source={{ uri: meta.thumbnailUrl }} style={styles.previewThumb} />
-              ) : (
-                <View style={[styles.previewThumb, styles.previewThumbPlaceholder]} />
-              )}
-            </View>
-            <View style={styles.previewBody}>
-              <Text style={styles.previewTitle} numberOfLines={2}>
-                {loading ? "Завантаження…" : meta?.title}
-              </Text>
-            </View>
-          </View>
-        )}
-
-        <StatusToggle value={status} onChange={setStatus} />
-
-        <View style={styles.tagsSection}>
-          <Text style={styles.tagsSectionLabel}>Теги</Text>
-          <Pressable style={styles.tagSelector} onPress={() => setTagsDrawerVisible(true)}>
-            <Text style={styles.tagSelectorText} numberOfLines={1}>
-              {selectedTagIds.length > 0
-                ? tags
-                    .filter((t) => selectedTagIds.includes(t.id))
-                    .map((t) => t.name)
-                    .join(", ")
-                : "Обрати теги"}
-            </Text>
-            <Ionicons name="chevron-down" size={16} color={colors.textSecondary} />
-          </Pressable>
-        </View>
-      </View>
-
-      <TagsDrawer
-        visible={tagsDrawerVisible}
-        onClose={() => setTagsDrawerVisible(false)}
-        tags={tags}
-        videos={videos}
-        selectedTagIds={selectedTagIds}
-        onChangeSelectedTagIds={setSelectedTagIds}
-        onCreateTag={() => {
-          setTagsDrawerVisible(false);
-          router.push("/tag-editor");
-        }}
-        onEditTag={(tagId) => {
-          setTagsDrawerVisible(false);
-          router.push(`/tag-editor?tagId=${tagId}`);
-        }}
-        onReparentTag={(tagId) => {
-          setTagsDrawerVisible(false);
-          router.push(`/tag-reparent?tagId=${tagId}`);
-        }}
-        onDeleteTag={(tagId, mode) => removeTag(tagId, mode)}
-        onBulkReparentTags={(tagIds) => {
-          setTagsDrawerVisible(false);
-          router.push(`/tag-reparent?tagIds=${tagIds.join(",")}`);
-        }}
-        confirmLabel="Готово"
+      }
+    >
+      <TextInput
+        value={url}
+        onChangeText={setUrl}
+        placeholder="Встав посилання на YouTube або TikTok"
+        placeholderTextColor={S.ink3}
+        style={[styles.input, { backgroundColor: S.fill, color: S.ink }]}
+        autoCapitalize="none"
+        autoCorrect={false}
+        {...softCursor(scheme)}
       />
-    </SafeAreaView>
+
+      {(meta || loading) && (
+        <View style={[styles.preview, { backgroundColor: S.fill }]}>
+          <View style={[styles.previewThumb, { backgroundColor: S.fillSolid }]}>
+            {meta?.thumbnailUrl ? <Image source={{ uri: meta.thumbnailUrl }} style={{ width: "100%", height: "100%" }} /> : null}
+          </View>
+          <Text style={[TYPE.cardTitle, { flex: 1, color: S.ink }]} numberOfLines={3}>
+            {loading ? "Завантаження…" : meta?.title}
+          </Text>
+        </View>
+      )}
+
+      <StatusToggle value={status} onChange={setStatus} />
+
+      <Field label="Смарт-папки">
+        <Pressable style={[styles.selector, { backgroundColor: S.fill }]} onPress={() => setTagsDrawerVisible(true)}>
+          <Ionicons name="pricetag-outline" size={19} color={S.ink2} />
+          <Text style={[TYPE.row, { flex: 1, color: selectedNames.length ? S.ink : S.ink3 }]} numberOfLines={1}>
+            {selectedNames.length > 0 ? selectedNames.join(", ") : "Обрати смарт-папки"}
+          </Text>
+          <Ionicons name="chevron-forward" size={17} color={S.ink3} />
+        </Pressable>
+      </Field>
+    </SheetScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  headerTitle: {
-    color: colors.textPrimary,
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  headerAction: {
-    color: colors.textSecondary,
-    fontSize: 14,
-  },
-  headerSave: {
-    color: colors.iconDark,
-    fontWeight: "700",
-  },
-  disabled: {
-    opacity: 0.4,
-  },
-  content: {
-    padding: spacing.lg,
-    gap: spacing.lg,
-  },
-  input: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 12,
-    color: colors.textPrimary,
-    fontSize: 14,
-  },
-  previewCard: {
-    flexDirection: "row",
-    gap: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.sm,
-  },
-  previewThumbWrap: {
-    width: 120,
-    aspectRatio: 16 / 9,
-    borderRadius: radius.sm,
-    overflow: "hidden",
-  },
-  previewThumb: {
-    width: "100%",
-    height: "100%",
-  },
-  previewThumbPlaceholder: {
-    backgroundColor: colors.surfaceElevated,
-  },
-  previewBody: {
-    flex: 1,
-    justifyContent: "center",
-  },
-  previewTitle: {
-    color: colors.textPrimary,
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  tagsSection: {
-    gap: spacing.sm,
-  },
-  tagsSectionLabel: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  tagSelector: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    height: 44,
-  },
-  tagSelectorText: {
-    flex: 1,
-    color: colors.textPrimary,
-    fontSize: 14,
-  },
+  input: { height: 52, borderRadius: 26, paddingHorizontal: 20, fontFamily: FONT.regular, fontWeight: "normal", fontSize: 15.5 },
+  preview: { flexDirection: "row", alignItems: "center", gap: 12, borderRadius: 20, padding: 10 },
+  previewThumb: { width: 120, aspectRatio: 16 / 9, borderRadius: 14, overflow: "hidden" },
+  selector: { height: 52, borderRadius: 26, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 18 },
 });

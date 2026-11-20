@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { Settings, Tag, Video, WatchStatus } from "@/types";
+import { CanvasLayout, CanvasPile, Settings, SortDir, SortField, Tag, Video, WatchStatus } from "@/types";
 
 const MAX_TAG_DEPTH = 10;
 
@@ -64,8 +64,14 @@ const seedVideos: Video[] = [
   },
 ];
 
+export const BIN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
 interface LibraryState {
   videos: Video[];
+  /** The bin: local to this device, never synced, emptied after 30 days. */
+  bin: Video[];
+  /** Canvas arrangements by layout key; local to this device, not synced. */
+  canvas: Record<string, CanvasLayout>;
   tags: Tag[];
   settings: Settings;
 
@@ -73,6 +79,12 @@ interface LibraryState {
   updateVideo: (id: string, patch: Partial<Video>) => void;
   removeVideo: (id: string) => void;
   removeVideos: (ids: string[]) => void;
+  /** Moves videos to the bin (recoverable); they leave the synced list. */
+  moveToBin: (ids: string[]) => void;
+  restoreFromBin: (ids: string[]) => void;
+  /** Deletes from the bin for good (all of it when no ids are given). */
+  purgeBin: (ids?: string[]) => void;
+  purgeExpiredBin: () => void;
   /** Adds/removes a tag across many videos at once (bulk edit in multi-select). */
   setBulkTagsOnVideos: (videoIds: string[], addTagIds: string[], removeTagIds: string[]) => void;
 
@@ -88,14 +100,33 @@ interface LibraryState {
   removeTag: (id: string, mode: "delete_videos" | "unsort_videos") => void;
 
   updateSettings: (patch: Partial<Settings>) => void;
+
+  /** Merges a change into a canvas arrangement; a pile set to null is removed. */
+  patchCanvas: (
+    key: string,
+    patch: {
+      photos?: CanvasLayout["photos"];
+      folders?: CanvasLayout["folders"];
+      open?: CanvasLayout["open"];
+      piles?: Record<string, CanvasPile | null>;
+      slots?: Record<string, number>;
+      resetFolders?: boolean;
+    }
+  ) => void;
 }
 
 export const useLibraryStore = create<LibraryState>()(
   persist(
     (set, get) => ({
       videos: seedVideos,
+      bin: [],
+      canvas: {},
       tags: seedTags,
       settings: {
+        sortField: "updatedAt",
+        sortDir: "desc",
+        listMode: "folders",
+        cardLayout: "grid",
         theme: "system",
         openVideoMode: "in_app",
         lastSyncedAt: null,
@@ -106,7 +137,7 @@ export const useLibraryStore = create<LibraryState>()(
 
       updateVideo: (id, patch) =>
         set((state) => ({
-          videos: state.videos.map((v) => (v.id === id ? { ...v, ...patch } : v)),
+          videos: state.videos.map((v) => (v.id === id ? { ...v, ...patch, updatedAt: Date.now() } : v)),
         })),
 
       removeVideo: (id) =>
@@ -114,6 +145,35 @@ export const useLibraryStore = create<LibraryState>()(
 
       removeVideos: (ids) =>
         set((state) => ({ videos: state.videos.filter((v) => !ids.includes(v.id)) })),
+
+      moveToBin: (ids) =>
+        set((state) => {
+          const now = Date.now();
+          const moving = state.videos.filter((v) => ids.includes(v.id)).map((v) => ({ ...v, deletedAt: now }));
+          return {
+            videos: state.videos.filter((v) => !ids.includes(v.id)),
+            bin: [...moving, ...state.bin],
+          };
+        }),
+
+      restoreFromBin: (ids) =>
+        set((state) => {
+          const back = state.bin.filter((v) => ids.includes(v.id)).map(({ deletedAt: _d, ...v }) => v as Video);
+          return {
+            bin: state.bin.filter((v) => !ids.includes(v.id)),
+            videos: [...back, ...state.videos],
+          };
+        }),
+
+      purgeBin: (ids) =>
+        set((state) => ({ bin: ids ? state.bin.filter((v) => !ids.includes(v.id)) : [] })),
+
+      purgeExpiredBin: () =>
+        set((state) => {
+          const limit = Date.now() - BIN_TTL_MS;
+          const bin = state.bin.filter((v) => (v.deletedAt ?? Date.now()) > limit);
+          return bin.length === state.bin.length ? state : { bin };
+        }),
 
       setBulkTagsOnVideos: (videoIds, addTagIds, removeTagIds) =>
         set((state) => ({
@@ -202,10 +262,34 @@ export const useLibraryStore = create<LibraryState>()(
 
       updateSettings: (patch) =>
         set((state) => ({ settings: { ...state.settings, ...patch } })),
+
+      patchCanvas: (key, patch) =>
+        set((state) => {
+          const prev: CanvasLayout = state.canvas[key] ?? { photos: {}, folders: {}, open: {}, piles: {} };
+          const piles = { ...prev.piles };
+          Object.entries(patch.piles ?? {}).forEach(([id, rec]) => {
+            if (rec) piles[id] = rec;
+            else delete piles[id];
+          });
+          const next: CanvasLayout = {
+            photos: { ...prev.photos, ...(patch.photos ?? {}) },
+            folders: patch.resetFolders ? {} : { ...prev.folders, ...(patch.folders ?? {}) },
+            open: { ...prev.open, ...(patch.open ?? {}) },
+            piles,
+            slots: { ...(prev.slots ?? {}), ...(patch.slots ?? {}) },
+          };
+          return { canvas: { ...state.canvas, [key]: next } };
+        }),
     }),
     {
       name: "bearlessnotes-library",
       storage: createJSONStorage(() => AsyncStorage),
+      // Settings gained keys: merge them over the defaults instead of letting
+      // an older saved object replace the whole thing.
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<LibraryState>;
+        return { ...current, ...p, settings: { ...current.settings, ...(p.settings ?? {}) }, bin: p.bin ?? [], canvas: p.canvas ?? {} };
+      },
     }
   )
 );
@@ -227,6 +311,20 @@ export function filterVideos(
     if (normalizedQuery && !video.title.toLowerCase().includes(normalizedQuery)) return false;
     return true;
   });
+}
+
+export function sortVideos(videos: Video[], field: SortField, dir: SortDir): Video[] {
+  const sorted = [...videos].sort((a, b) => {
+    if (field === "title") return a.title.localeCompare(b.title, "uk", { sensitivity: "base", numeric: true });
+    if (field === "createdAt") return a.createdAt - b.createdAt;
+    return (a.updatedAt ?? a.createdAt) - (b.updatedAt ?? b.createdAt);
+  });
+  return dir === "desc" ? sorted.reverse() : sorted;
+}
+
+/** "5 жовт., 14:30" - the date line on a card. */
+export function formatStamp(ms: number): string {
+  return new Date(ms).toLocaleString("uk-UA", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 export function formatDuration(totalSeconds: number): string {

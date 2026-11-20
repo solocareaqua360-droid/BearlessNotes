@@ -1,10 +1,10 @@
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@/components/icons/Ionicons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMemo } from "react";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { colors, radius, spacing } from "@/constants/theme";
+import { SheetScreen } from "@/components/ui/SheetScreen";
+import { TYPE, useSoft } from "@/theme/soft";
 import { useLibraryStore } from "@/store/useLibraryStore";
 import { Tag } from "@/types";
 
@@ -21,6 +21,7 @@ function fullPath(tag: Tag, byId: Map<string, Tag>): string {
 }
 
 export default function TagReparentScreen() {
+  const S = useSoft();
   const { tagId, tagIds: tagIdsParam } = useLocalSearchParams<{ tagId?: string; tagIds?: string }>();
   const tags = useLibraryStore((s) => s.tags);
   const updateTag = useLibraryStore((s) => s.updateTag);
@@ -60,102 +61,52 @@ export default function TagReparentScreen() {
     router.back();
   };
 
-  return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={8}>
-          <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Материнська папка</Text>
-        <View style={{ width: 22 }} />
+  const Row = ({ icon, label, checked, onPress, disabled, color }: { icon: string; label: string; checked?: boolean; onPress: () => void; disabled?: boolean; color?: string }) => (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => [styles.row, { backgroundColor: pressed ? S.fill : "transparent" }]}
+    >
+      <View style={[styles.badge, { backgroundColor: color ?? S.fillSolid }]}>
+        <Ionicons name={icon as any} size={15} color={color ? "#FFFFFF" : S.ink2} />
       </View>
+      <Text style={[TYPE.row, { flex: 1, color: S.ink }]} numberOfLines={2}>
+        {label}
+      </Text>
+      {checked ? <Ionicons name="checkmark" size={20} color={S.ink} /> : null}
+    </Pressable>
+  );
 
-      {isBulk ? (
-        <Text style={styles.subtitle}>Оберіть новий батьківський тег для {targetIds.length} тегів</Text>
-      ) : (
-        tag && <Text style={styles.subtitle}>Оберіть новий батьківський тег для "{tag.name}"</Text>
-      )}
-
-      <FlatList
-        data={options}
-        keyExtractor={(item) => item.tag.id}
-        contentContainerStyle={styles.listContent}
-        ListHeaderComponent={
-          <Pressable
-            style={styles.row}
-            onPress={() => handleSelect(null)}
-            disabled={!isBulk && tag?.parentId == null}
-          >
-            <Ionicons name="remove-circle-outline" size={18} color={colors.textSecondary} />
-            <Text style={styles.rowLabel}>Без батьківського тега (кореневий)</Text>
-            {tag?.parentId == null && (
-              <Ionicons name="checkmark" size={18} color={colors.iconDark} />
-            )}
-          </Pressable>
-        }
-        renderItem={({ item }) => (
-          <Pressable style={styles.row} onPress={() => handleSelect(item.tag.id)}>
-            <View style={[styles.iconBadge, { backgroundColor: item.tag.color }]}>
-              <Ionicons name={item.tag.icon as any} size={13} color="#fff" />
-            </View>
-            <Text style={styles.rowLabel} numberOfLines={1}>
-              {item.path}
-            </Text>
-            {tag?.parentId === item.tag.id && (
-              <Ionicons name="checkmark" size={18} color={colors.iconDark} />
-            )}
-          </Pressable>
-        )}
-      />
-    </SafeAreaView>
+  return (
+    <SheetScreen title="Батьківська смарт-папка">
+      <Text style={[TYPE.meta, { color: S.ink2, paddingHorizontal: 4 }]}>
+        {isBulk ? `Оберіть нову батьківську смарт-папку для ${targetIds.length} смарт-папок` : tag ? `Оберіть нову батьківську смарт-папку для «${tag.name}»` : ""}
+      </Text>
+      <View style={styles.list}>
+        <Row
+          icon="remove-circle-outline"
+          label="Без батьківської смарт-папки (коренева)"
+          checked={!isBulk && tag?.parentId == null}
+          disabled={!isBulk && tag?.parentId == null}
+          onPress={() => handleSelect(null)}
+        />
+        {options.map((item) => (
+          <Row
+            key={item.tag.id}
+            icon={item.tag.icon}
+            color={item.tag.color}
+            label={item.path}
+            checked={!isBulk && tag?.parentId === item.tag.id}
+            onPress={() => handleSelect(item.tag.id)}
+          />
+        ))}
+      </View>
+    </SheetScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  headerTitle: {
-    color: colors.textPrimary,
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  subtitle: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
-  },
-  listContent: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  iconBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  rowLabel: {
-    flex: 1,
-    color: colors.textPrimary,
-    fontSize: 14,
-  },
+  list: { gap: 2 },
+  row: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 52, borderRadius: 18, paddingHorizontal: 10 },
+  badge: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
 });

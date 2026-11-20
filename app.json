@@ -6,9 +6,11 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
-    "backgroundColor": "#F2F2F5",
+    "backgroundColor": "#F6F5F2",
     "icon": "./assets/icon.png",
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.bearlessnotes.app"
@@ -29,13 +31,43 @@
       [
         "expo-share-intent",
         {
-          "androidIntentFilters": ["text/*"]
+          "androidIntentFilters": [
+            "text/*"
+          ]
         }
-      ]
+      ],
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {
-        "projectId": "a5702ee7-33d8-47bf-bcc0-bb5c59951f1b"
+        "projectId": "a5702ee7-33d8-47bf-bcc0-bb5c59951f1b",
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "targetName": "ShareExtension",
+                  "bundleIdentifier": "com.bearlessnotes.app.share-extension",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.com.bearlessnotes.app"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/a5702ee7-33d8-47bf-bcc0-bb5c59951f1b",
+      "requestHeaders": {
+        "expo-channel-name": "preview"
       }
     }
   }
