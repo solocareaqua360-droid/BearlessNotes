@@ -384,3 +384,8 @@ no access of Claude's own to his data. The app must be open; records wait in the
 Valuable documents (research, decisions) from the app sessions are kept in mindEva, not lost in chats. A session hands a .md file to this main
 session; run `python3 scripts/inbox-doc.py add <app> <file.md> [--title ...]`. The signed-in Mac app (src/utils/inboxDocsBridge.web.ts) makes it a
 note in the explorer folder named after the app (one folder per app; structuring later). Once per key; an edited note is never overwritten.
+
+## One build at a time (2026-11-20)
+
+The Mac has 8 GB RAM; two builds at once choke it. Every build goes through the guard: `sh ~/.eva/buildguard.sh run <app> -- <command>` (state: `sh ~/.eva/buildguard.sh status`).
+Exit 3 = a build is already running: STOP and ask the user; only on his explicit yes run again with `EVA_BUILD_OK=1` (a second build). Exit 4 = two are already running: never a third.
