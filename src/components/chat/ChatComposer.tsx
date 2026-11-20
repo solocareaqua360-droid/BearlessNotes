@@ -1,5 +1,5 @@
 import { useEffect, useState, type Ref } from 'react';
-import { Image, Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Keyboard, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import TextInput from '../AppTextInput';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Ionicons } from '../icons/Ionicons';
@@ -10,6 +10,7 @@ import { chatColours } from './chatTokens';
 import HintBalloon from './HintBalloon';
 import DockGlassFill, { useDockSurface } from '../DockGlassFill';
 import { useDockGlass } from '../../utils/dockGlass';
+import { hapticButtonDown } from '../../utils/haptics';
 
 export type ComposerAttachment = { id: string; kind: 'photo' | 'file' | 'note' | 'folder' | 'link'; name: string; sub: string; uri?: string };
 
@@ -17,6 +18,16 @@ const STRIP_H = 56;
 const ROW_H = 44;
 // The round way back beside the dock, the app dock's own circle.
 const BACK = 52;
+// THE FIELD'S HEIGHT IS COMPUTED, not left to the system (2026-11-20, the user's: dictated text ran as ONE line, the rest
+// hidden): on Android a multiline field whose text is set from outside (the microphone writes it while the field has no
+// focus) kept the one-line height it had at rest. So the height follows the text: what the field itself reports, and until
+// it does, an estimate from the length - up to a room that follows the screen (4 lines on a short one, up to 10 on a tall one).
+const LINE = 23;
+function estimateLines(text: string, width: number): number {
+  // About 8.6 points to a letter at this size; the card is the screen less its margins and padding.
+  const perLine = Math.max(12, Math.floor((width - 80) / 8.6));
+  return text.split('\n').reduce((n, part) => n + Math.max(1, Math.ceil(part.length / perLine)), 0);
+}
 
 // THE CHAT'S DOCK (sketches fin2/fin3/fin6 of 2026-10-24, after Claude's own): at rest a narrow strip - «+», the field, the «?»
 // balloon (the hints), the microphone; while writing (focused, words typed, or something attached) the same thing GROWS into a
@@ -70,6 +81,9 @@ export default function ChatComposer({
   const glassOn = useDockGlass();
   const glassSurface = useDockSurface(S, glassOn);
   const [focused, setFocused] = useState(false);
+  const { height: winH, width: winW } = useWindowDimensions();
+  const [reportedH, setReportedH] = useState<number | null>(null);
+  const [scrollY, setScrollY] = useState(0);
   // Android's back gesture puts the keyboard away WITHOUT blurring the field: the card stayed open over an empty field. The
   // keyboard going down ends the writing.
   useEffect(() => {
@@ -77,6 +91,21 @@ export default function ChatComposer({
     return () => sub.remove();
   }, []);
   const open = focused || value.length > 0 || attachments.length > 0;
+  // The room the field may take: what is left above the keyboard (or the whole screen when there is none, as while dictating),
+  // less the header and the card's own chrome; 4 lines at least, 10 at most.
+  const room = winH - keyboardHeight - 260;
+  const maxLines = Math.max(4, Math.min(10, Math.floor((room * 0.55) / LINE)));
+  const maxH = LINE * maxLines + 4;
+  const wantedH = Math.max(LINE, reportedH ?? estimateLines(value, winW) * LINE);
+  const fieldH = Math.min(maxH, wantedH);
+  const overflows = (reportedH ?? wantedH) > maxH + 2;
+  useEffect(() => {
+    if (value.length === 0) {
+      setReportedH(null);
+      setScrollY(0);
+    }
+  }, [value]);
+  const onScrollField = (e: { nativeEvent: { contentOffset?: { y?: number } } }) => setScrollY(e.nativeEvent.contentOffset?.y ?? 0);
   const canSend = !sending && (value.trim().length > 0 || attachments.length > 0);
   // 0 = the strip, 1 = the card - the radius and the padding follow it, the height is the content's own.
   const t = useSharedValue(open ? 1 : 0);
@@ -104,7 +133,7 @@ export default function ChatComposer({
   const hints = hintsOpen
     ? circle(<Ionicons name="chevron-down" size={19} color="#FFFFFF" />, onHints, 'Сховати підказки', S.accent)
     : circle(<HintBalloon color={S.accent} />, onHints, 'Підказки', C.wash);
-  const mic = circle(<Ionicons name={listening ? 'stop' : 'mic-outline'} size={21} color={listening ? '#FFFFFF' : S.ink} />, onMic, listening ? 'Зупинити диктування' : 'Диктувати', listening ? S.accent : 'transparent');
+  const mic = circle(<Ionicons name={listening ? 'stop' : 'mic-outline'} size={21} color={listening ? '#FFFFFF' : S.ink} />, () => { hapticButtonDown(); onMic(); }, listening ? 'Зупинити диктування' : 'Диктувати', listening ? S.accent : 'transparent');
 
   return (
     <>
@@ -155,17 +184,38 @@ export default function ChatComposer({
           buttons go down to their own row - the SAME TextInput moves, it is never a second one. */}
       <View style={[styles.line, open && styles.lineOpen]}>
         {!open && plus}
-        <TextInput
-          ref={inputRef}
-          value={value}
-          onChangeText={onChangeText}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          placeholder={placeholder}
-          placeholderTextColor={S.ink3}
-          multiline
-          style={[styles.input, { color: S.ink }, open ? styles.inputOpen : styles.inputRest]}
-        />
+        <View style={styles.fieldBox}>
+          <TextInput
+            ref={inputRef}
+            value={value}
+            onChangeText={onChangeText}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            onContentSizeChange={(e) => setReportedH(Math.ceil(e.nativeEvent.contentSize.height))}
+            onScroll={onScrollField}
+            placeholder={placeholder}
+            placeholderTextColor={S.ink3}
+            multiline
+            scrollEnabled
+            style={[styles.input, { color: S.ink }, open ? { height: fieldH, paddingRight: overflows ? 10 : 0 } : styles.inputRest]}
+          />
+          {/* THE SIGN THAT IT SCROLLS (the user's: «видно, що його можна прокручувати», as in Claude's app): a thin bar at the
+              right edge while there is more text than the field shows - its length is the visible share, its place the position. */}
+          {open && overflows && (
+            <View pointerEvents="none" style={[styles.scrollTrack, { height: fieldH }]}>
+              <View
+                style={[
+                  styles.scrollThumb,
+                  {
+                    backgroundColor: S.ink3,
+                    height: Math.max(22, fieldH * (fieldH / Math.max(reportedH ?? wantedH, fieldH))),
+                    top: Math.min(fieldH - 22, (scrollY / Math.max(1, (reportedH ?? wantedH) - fieldH)) * (fieldH - Math.max(22, fieldH * (fieldH / Math.max(reportedH ?? wantedH, fieldH))))),
+                  },
+                ]}
+              />
+            </View>
+          )}
+        </View>
         {!open && hints}
         {!open && mic}
       </View>
@@ -216,7 +266,9 @@ const styles = StyleSheet.create({
   lineOpen: { paddingHorizontal: 8 },
   input: { flex: 1, fontSize: 16.5, lineHeight: 23, fontFamily: SOFT_REGULAR, paddingVertical: 0 },
   inputRest: { maxHeight: 40, paddingLeft: 6 },
-  inputOpen: { maxHeight: 23 * 6 + 4 },
+  fieldBox: { flex: 1 },
+  scrollTrack: { position: 'absolute', right: 0, top: 0, width: 4 },
+  scrollThumb: { position: 'absolute', right: 0, width: 3, borderRadius: 2, opacity: 0.7 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   circle: { alignItems: 'center', justifyContent: 'center' },
   estimate: { fontSize: 11.5, fontFamily: SOFT_MEDIUM, maxWidth: 150, paddingRight: 2 },

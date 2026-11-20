@@ -78,7 +78,7 @@ import {
 } from '../utils/chatAttachments';
 import Menu, { type MenuEntry } from '../components/surfaces/Menu';
 import { writeMemoryNote, writeMemoryTree } from '../utils/assistantTree';
-import { shortTitle } from '../utils/assistant';
+import { shortTitle, wantsAutoTitle, nameChat } from '../utils/assistant';
 import { FEATURES } from '../features';
 import { navigationRef } from '../navigationRef';
 import AssistantHome, { NO_THEME, ThemeChips } from '../components/chat/AssistantHome';
@@ -95,6 +95,7 @@ import { morphLanded } from '../utils/morph';
 import { speakThoughts, stopVoice, subscribeVoice } from '../utils/thoughtVoice';
 import { useGeminiUsage } from '../utils/geminiUsage';
 import { hapticPickUp } from '../utils/haptics';
+import { playDictationStart, playDictationStop } from '../utils/dictationCue';
 import { getDocs, where } from '../firestore';
 import { ownedQuery } from '../utils/owned';
 import { parseFormattedText } from '../utils/documentBlocks';
@@ -266,6 +267,21 @@ export default function AssistantScreen() {
     setChat(next);
     saveChat(next);
   };
+  // A conversation from before the AI named them by the subject gets its name when it is opened (once, and never one the person
+  // named himself): «Привіт хочу дослідити те у інег…» becomes the subject.
+  const namedOnOpen = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const c = chat;
+    if (!c || namedOnOpen.current.has(c.id) || c.autoTitle || !wantsAutoTitle(c)) return;
+    namedOnOpen.current.add(c.id);
+    nameChat(c)
+      .then(({ title }) => {
+        const now = chatRef.current;
+        if (title && now && now.id === c.id && !now.customTitle?.trim() && !now.autoTitle) update({ ...now, autoTitle: title });
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chat?.id]);
   // THE FIRST SCREEN IS A LIST (features.aiHome): themes and conversations; a conversation opens from it and «‹» / × goes back.
   const [home, setHome] = useState<boolean>(FEATURES.aiHome);
   const [composing, setComposing] = useState(false);
@@ -582,6 +598,14 @@ export default function AssistantScreen() {
         ],
       };
       update(answered);
+      // The AI names the conversation by its subject (never one the person named himself).
+      if (wantsAutoTitle(answered)) {
+        nameChat(answered)
+          .then(({ title }) => {
+            if (title && chatRef.current?.id === answered.id && !chatRef.current.customTitle?.trim()) update({ ...chatRef.current, autoTitle: title });
+          })
+          .catch(() => {});
+      }
       // The older part is folded into the summary now and then, off to the side of the answer.
       foldOlder(answered)
         .then((folded) => {
@@ -1019,6 +1043,7 @@ export default function AssistantScreen() {
   const stopListening = useCallback(() => {
     ExpoSpeechRecognitionModule.stop();
     setListening(false);
+    playDictationStop();
   }, []);
   const startListening = useCallback(async () => {
     if (!ExpoSpeechRecognitionModule.isRecognitionAvailable()) {
@@ -1028,8 +1053,10 @@ export default function AssistantScreen() {
     const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
     if (!permission.granted) return;
     committed.current = draft;
-    ExpoSpeechRecognitionModule.start({ lang: 'uk-UA', interimResults: true, continuous: true, addsPunctuation: true });
+    // At once the button shows «слухаю», then the soft chime (the microphone opens only after it, so it is not written down).
     setListening(true);
+    await playDictationStart();
+    ExpoSpeechRecognitionModule.start({ lang: 'uk-UA', interimResults: true, continuous: true, addsPunctuation: true });
   }, [draft]);
   useSpeechRecognitionEvent('result', (event) => {
     const heard = event.results?.[0]?.transcript ?? '';

@@ -63,6 +63,9 @@ export type AssistantChat = {
   instruction?: string;
   folderId?: string;
   customTitle?: string;
+  // A NAME THE AI GAVE BY THE SUBJECT (2026-11-20, the user's: chats were named by the first words - «хочу дослідити…» - and the
+  // AI then offered them as «similar» because of those words): used when the person has not named it himself (customTitle wins).
+  autoTitle?: string;
   // THE CONVERSATION'S THEME (2026-10-29, features.aiHome): one of the person's chat themes (assistantThemes), a place on the
   // AI's first screen - not a folder of the explorer.
   themeId?: string;
@@ -191,6 +194,7 @@ export async function loadChat(): Promise<AssistantChat> {
 
 export function titleOf(chat: AssistantChat): string {
   if (chat.customTitle?.trim()) return chat.customTitle.trim();
+  if (chat.autoTitle?.trim()) return chat.autoTitle.trim();
   const first = chat.messages.find((m) => m.role === 'user')?.text ?? '';
   return shortTitle(first, 70) || 'Нова розмова';
 }
@@ -240,6 +244,7 @@ function toStored(chat: AssistantChat) {
     ...(chat.instruction?.trim() ? { instruction: chat.instruction.trim() } : {}),
     ...(chat.folderId ? { folderId: chat.folderId } : {}),
     ...(chat.customTitle?.trim() ? { customTitle: chat.customTitle.trim() } : {}),
+    ...(chat.autoTitle?.trim() ? { autoTitle: chat.autoTitle.trim() } : {}),
     ...(chat.themeId ? { themeId: chat.themeId } : {}),
     ...(chat.sections?.length ? { sections: chat.sections, sortedIds: chat.sortedIds ?? [] } : {}),
   };
@@ -263,6 +268,7 @@ function fromStored(id: string, data: Record<string, unknown>): AssistantChat {
     ...(data.instruction ? { instruction: data.instruction as string } : {}),
     ...(data.folderId ? { folderId: data.folderId as string } : {}),
     ...(data.customTitle ? { customTitle: data.customTitle as string } : {}),
+    ...(data.autoTitle ? { autoTitle: data.autoTitle as string } : {}),
     ...(data.themeId ? { themeId: data.themeId as string } : {}),
     ...(Array.isArray(data.sections) && data.sections.length ? { sections: data.sections as ChatSection[], sortedIds: (data.sortedIds as string[]) ?? [] } : {}),
   };
@@ -615,7 +621,7 @@ ${list}
 
 Перше повідомлення: «${message.replace(/\s+/g, ' ').slice(0, 600)}»
 
-Відповідай лише JSON: {"chatId": "id розмови або null", "confident": true або false}. confident = true лише коли тема справді та сама; при будь-якому сумніві null і false.`;
+Загальні слова-запити («привіт», «хочу дослідити», «розкажи», «поясни», «допоможи») НЕ є темою: порівнюй лише ЗМІСТ, про що саме розмова.\n\nВідповідай лише JSON: {"chatId": "id розмови або null", "confident": true або false}. confident = true лише коли тема справді та сама; при будь-якому сумніві null і false.`;
 }
 export async function routeFirstMessage(message: string, chats: ChatSummary[]): Promise<{ chatId: string | null; costUsd: number }> {
   const pool = chats.filter((c) => c.count > 0);
@@ -636,6 +642,42 @@ export async function updateChatFields(chatId: string, fields: { instruction?: s
   // The list reads `title`: a new name is the title at once.
   if (fields.customTitle?.trim()) patch.title = fields.customTitle.trim();
   await setDoc(doc(db, COLLECTION, chatId), patch, { merge: true });
+}
+
+// THE AI NAMES A CONVERSATION BY ITS SUBJECT (2026-11-20). Asked after the first answer and again when the talk has taken
+// shape; never when the person gave it a name himself (customTitle) - that name is his. One cheap request on the first
+// few messages; any failure is silence (the old name by the first words stays), never an error on screen.
+export function wantsAutoTitle(chat: AssistantChat): boolean {
+  if (chat.customTitle?.trim()) return false;
+  const n = chat.messages.length;
+  if (n < 2) return false;
+  // After the first exchange, then once the subject has settled (3 exchanges), then again deeper in.
+  return !chat.autoTitle || n === 6 || n === 14;
+}
+export async function nameChat(chat: AssistantChat): Promise<{ title: string | null; costUsd: number }> {
+  const sample = chat.messages
+    .filter((m) => !m.error)
+    .slice(0, 8)
+    .map((m) => `${m.role === 'user' ? 'Людина' : 'ШІ'}: ${m.text.replace(/\s+/g, ' ').slice(0, 350)}`)
+    .join('\n');
+  const prompt = `Дай розмові КОРОТКУ назву за її ТЕМОЮ: 2-5 слів, українською, без лапок і крапки в кінці.
+Правила: назва каже, ПРО ЩО розмова (предмет), а не що людина зробила. Не починай із «хочу», «привіт», «розкажи», «поясни», «допомога», «питання». Не копіюй початок фрази людини. Якщо тема англійською або це назва (RAG, YouTube) - залиш її.
+${chat.autoTitle ? `Поточна назва: «${chat.autoTitle}». Змінюй її лише якщо тема розмови помітно змінилась або назва неточна.\n` : ''}
+Розмова:
+${sample}
+
+Відповідай лише назвою.`;
+  try {
+    const { text, costUsd } = await askCosted(prompt);
+    const title = text
+      .split('\n')[0]
+      .replace(/^["«»'“”\s]+|["«»'“”\s.]+$/g, '')
+      .trim();
+    if (!title || title.length > 60) return { title: null, costUsd };
+    return { title, costUsd };
+  } catch {
+    return { title: null, costUsd: 0 };
+  }
 }
 
 // ---- THE CHAT THEMES (features.aiHome, 2026-10-29) ----------------------------------------------------------------------------
@@ -666,7 +708,7 @@ export async function createTheme(name: string, taken: ChatTheme[]): Promise<Cha
 
 // WHICH CONVERSATION THIS LOOKS LIKE, on the phone (no AI, no cost): the words of the draft against each conversation's title
 // and summary. A match needs two shared words, or one long one in a short draft; null otherwise.
-const STOP = new Set(['який', 'яка', 'яке', 'які', 'щоб', 'чому', 'коли', 'тому', 'якщо', 'мені', 'тобі', 'тебе', 'мене', 'його', 'вона', 'вони', 'буде', 'було', 'треба', 'можна', 'about', 'what', 'with', 'this', 'that', 'from', 'have', 'then']);
+const STOP = new Set(['який', 'яка', 'яке', 'які', 'щоб', 'чому', 'коли', 'тому', 'якщо', 'мені', 'тобі', 'тебе', 'мене', 'його', 'вона', 'вони', 'буде', 'було', 'треба', 'можна', 'about', 'what', 'with', 'this', 'that', 'from', 'have', 'then', 'хочу', 'хочемо', 'дослідити', 'досліджувати', 'привіт', 'розкажи', 'розповіси', 'поясни', 'допоможи', 'допомогти', 'можеш', 'зроби', 'потрібно', 'цікаво', 'давай', 'будь', 'ласка', 'знайди', 'напиши', 'подивись', 'скажи', 'please', 'tell', 'explain', 'help', 'want', 'know']);
 export function wordsOf(text: string): string[] {
   // Short words are noise - except an abbreviation in capitals (RAG, API, CRM), often the very thing a talk is about
   // (2026-10-29: «Test RAG vector database cost» found no «Test RAG: what is RAG…»).
